@@ -24,7 +24,7 @@ const int DMA_TX_RX_SIZE = 64;
 const int DMA_TX_RX_FRAME = 32;
 const int DMA_COUNT = 8;
 const int NUMBER_OF_CHANNELS = 2;
-const float DAC_SCALE = 1.0f;
+const float DAC_SCALE = 0.5f;
 bool isIdle = true;
 
 //setting up framing output information
@@ -103,7 +103,7 @@ void startI2S() {
     config.channels = NUMBER_OF_CHANNELS;
     config.i2s_format = I2S_STD_FORMAT;
     config.buffer_count = DMA_COUNT;
-    config.buffer_size = DMA_RX_SIZE;
+    config.buffer_size = DMA_TX_RX_SIZE;
     config.is_master = true;
     config.port_no = 0;
     config.pin_ws = I2S_LRCLK;
@@ -329,8 +329,10 @@ void txTask(void *pvParameters) {
             uint32_t idxI = (phase >> (PHASE_BITS - 12)) & 0xFFF;
             uint32_t idxQ = ((phase - QUARTER_PHASE) >> (PHASE_BITS - 12)) & 0xFFF;
             
-            int32_t sampleI = (int32_t)((sineTable[idxI] * DAC_SCALE) << 8);
-            int32_t sampleQ = (int32_t)((sineTable[idxQ] * DAC_SCALE) << 8);
+            //int32_t sampleI = ((int32_t)(sineTable[idxI] * DAC_SCALE)) << 8;
+            //int32_t sampleQ = ((int32_t)(sineTable[idxQ] * DAC_SCALE)) << 8;
+            int32_t sampleI = (int32_t)(sineTable[idxI]) << 8;
+            int32_t sampleQ = (int32_t)(sineTable[idxQ]) << 8;
             outBuf[2*i] = sampleI;
             outBuf[2*i+1] = sampleQ;
 
