@@ -64,6 +64,33 @@ bool currentBit = 0;
 uint32_t samplesPerSymbol;
 uint32_t samplesLeftThisSymbol;
 
+#define TABLE_SIZE 4096
+int32_t sineTable[TABLE_SIZE];
+const float MARK_FREQ  = 9600.0f;
+const float SPACE_FREQ = 4800.0f;
+const uint32_t SYMBOL_RATE = 4800;
+uint32_t phaseSpace = 0;
+uint32_t phaseMark = 0;
+const uint32_t PHASE_BITS = 32;
+uint32_t phaseStepMark = 0;
+uint32_t phaseStepSpace = 0;
+volatile uint32_t currentStep = 0;
+const uint32_t QUARTER_PHASE = (uint32_t)(1ULL << (PHASE_BITS - 2));
+
+//calculates phase increment for certain frequency (4.8kHz and 9.6kHz)
+uint32_t phaseIncrement(float freq) {
+    return (uint32_t)((freq * (1ULL << PHASE_BITS)) / IN_SR);
+}
+
+//sets up 24 bit PCM LUT to be indexed by phase increment to synthesize analog tones
+void createSineTable() {
+    const float amp24 = 8388607.0f;
+    for (int i = 0; i < TABLE_SIZE; ++i) {
+        float angle = 2.0f * PI * (float)i / (float)TABLE_SIZE;
+        sineTable[i] = (int32_t)(sin(angle) * amp24);
+    }
+}
+
 //I2S setup, MCLK multiple actually turns out to be 384 due to bug known in git repo, spoke to owner about doubling, resolved
 void startI2S() {
     auto config = i2sStream.defaultConfig(RXTX_MODE);
@@ -88,8 +115,13 @@ void startI2S() {
 void rxTask(void *pvParameters) {
     (void)pvParameters;
 
-    //64*4 = 256 bytes per I2S read, 
+    //64*4 = 256 bytes per I2S read,
     size_t bytesNeeded = DMA_TX_RX_SIZE * sizeof(int32_t);
+
+    uint8_t rxByte = 0;
+    uint8_t bitCount = 0;
+    uint8_t sampleCount = 0;
+    bool PREAMBLE_RECEIVED = false;
 
 
     while (1) {
@@ -106,23 +138,47 @@ void rxTask(void *pvParameters) {
         int bytesRead = i2sStream.readBytes((uint8_t*)inBuf, bytesNeeded);
         
 
-
         for (int f = 0; f < DMA_TX_RX_FRAME; f++) {
 
-            int32_t L24 = inBuf[2*f] >> 8;
-            int32_t R24 = inBuf[2*f+1] >> 8;
+            int32_t sample = inBuf[2*f] >> 8;
 
-            int32_t mono32 = (L24 + R24)/2;
-
-            int16_t mono16 = (int16_t)(mono32 >> 8);
+            int32_t sSpace = sineTable[(phaseSpace >> (PHASE_BITS - 12)) & 0xFFF];
+            int32_t sMark = sineTable[(phaseMark  >> (PHASE_BITS - 12)) & 0xFFF];
 
 
+            accSpace += (int64_t)sample * sSpace;
+            accMark += (int64_t)sample * sMark;
 
+            phaseSpace += phaseStepSpace;
+            phaseMark += phaseStepMark;
 
-           
-                if (xQueueSend(pcmQueue, &out16, pdMS_TO_TICKS(5)) != pdTRUE)
-                    pcmQueueDrops++;
-            
+            sampleCount++;
+
+            if (sampleCount >= SAMPLES_PER_SYMBOL) {
+
+                int bit = (accMark > accSpace);
+
+                accSpace = 0;
+                accMark = 0;
+                sampleCount = 0;
+
+                // Do something with bit
+                // e.g. push to queue, shift into byte, etc.
+                // xQueueSend(bitQueue, &bit, 0);
+                rxByte = (rxByte << 1) | (bit & 1);
+                 bitCount++;
+
+                if (bitCount == 8) {
+                // rxByte is now complete
+                if(rxByte == 0x7E){
+                    PREAMBLE_RECEIVED = true;
+                }
+
+                rxByte = 0;
+                bitCount = 0;
+
+                
+            }
         }
     }
 }
@@ -136,20 +192,9 @@ void codec2Task(void *pvParameters) {
         while (1) vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-    uint32_t fill = 0;
-    int16_t sample;
-
-    uint8_t frame[TX_FRAME_BYTES];
-    uint16_t bitIndex = 0;
-
+  
     while (1) {
 
-            if (!digitalRead(BUTTON)) {
-                    uint8_t dump2[TX_FRAME_BYTES];
-                    while (xQueueReceive(frameQueue, dump2, 0) == pdTRUE){}
-                vTaskDelay(pdMS_TO_TICKS(5));
-                continue;
-            }
 
         if (xQueueReceive(pcmQueue, &sample, pdMS_TO_TICKS(200)) == pdTRUE) {
 
@@ -162,38 +207,9 @@ void codec2Task(void *pvParameters) {
 
                 codec2_decode(c2, enc, codec_accum);
 
-                memset(frame, 0, TX_FRAME_BYTES);
-                bitIndex = 0;
+               
 
-
-                for (int p = 0; p < PREAMBLE_FLAGS; p++) {
-                    uint8_t flag = PREAMBLE_FLAG;
-                    for (int b = 7; b >= 0; b--) {
-                        uint8_t bit = (flag >> b) & 1;
-                        frame[bitIndex >> 3] |= (bit << (7 - (bitIndex & 7)));
-                        bitIndex++;
-                    }
-                }
-
-                for (int i = 0; i < 6; i++) {
-                    uint8_t x = enc[i];
-                    for (int b = 7; b >= 0; b--) {
-                        uint8_t bit = (x >> b) & 1;
-                        frame[bitIndex >> 3] |= (bit << (7 - (bitIndex & 7)));
-                        bitIndex++;
-                    }
-                }
-
-                
-                for (int p = 0; p < POSTAMBLE_FLAGS; p++) {
-                    uint8_t flag = POSTAMBLE_FLAG;
-                    for (int b = 7; b >= 0; b--) {
-                        uint8_t bit = (flag >> b) & 1;
-                        frame[bitIndex >> 3] |= (bit << (7 - (bitIndex & 7)));
-                        bitIndex++;
-                    }
-                }
-                
+               
 
                 const TickType_t pushTimeout = pdMS_TO_TICKS(5);
                 if (xQueueSend(frameQueue, frame, pushTimeout) != pdTRUE) {
@@ -227,51 +243,10 @@ void txTask(void *pvParameters) {
 
         for (int i = 0; i < DMA_TX_RX_FRAME; i++) {
 
-            phase += currentStep;
-
-            
-            uint32_t idxI = (phase >> (PHASE_BITS - 12)) & 0xFFF;
-            uint32_t idxQ = ((phase - QUARTER_PHASE) >> (PHASE_BITS - 12)) & 0xFFF;
-            
-            //int32_t sampleI = ((int32_t)(sineTable[idxI] * DAC_SCALE)) << 8;
-            //int32_t sampleQ = ((int32_t)(sineTable[idxQ] * DAC_SCALE)) << 8;
-            int32_t sampleI = (int32_t)(sineTable[idxI]) << 8;
-            int32_t sampleQ = (int32_t)(sineTable[idxQ]) << 8;
-            outBuf[2*i] = sampleI;
-            outBuf[2*i+1] = sampleQ;
-
-
-            if (--samplesLeftThisSymbol == 0) {
-                
-                uint8_t nextBit = 0;
-
-                if (usingIdle) {
-
-                    nextBit = 0;
-                    isIdle = usingIdle;
-
-                    if (xQueueReceive(frameQueue, frame, 0) == pdTRUE) {
-                        usingIdle = false;
-                        bitIndex = 0;
-                        nextBit = (frame[0] >> 7) & 1;
-                    }
-
-                } else {
-                    nextBit = (frame[bitIndex >> 3] >> (7 - (bitIndex & 7))) & 1;
-                    bitIndex++;
-                    isIdle = usingIdle;
-
-                    if (bitIndex >= totalBits) {
-                        usingIdle = true;
-                    }
-                }
-
-                lastNextBit = nextBit;
-                currentBit = nextBit;
-                currentStep = currentBit ? phaseStepMark : phaseStepSpace;
-                samplesLeftThisSymbol = samplesPerSymbol;
-            }
         }
+
+
+            
 
 
         size_t wrote = i2sStream.write((uint8_t*)outBuf, DMA_TX_RX_SIZE * sizeof(int32_t));
@@ -299,7 +274,6 @@ void setup() {
     samplesLeftThisSymbol = samplesPerSymbol;
 
     startI2S();
-    pcmQueue = xQueueCreate(PCM_QUEUE_LEN, sizeof(int16_t));
     frameQueue = xQueueCreate(16, TX_FRAME_BYTES); 
 
 
