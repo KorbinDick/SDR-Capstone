@@ -7,11 +7,6 @@ Developed in C++, using Arduino IDE, FreeRTOS and I2S configured.
 The project is in development, only one way communication is achieved so far, transmitter (Tx) to receiver (Rx).
 
 
-
-
-
------------------------------------------------------------------------
-
 -----------------------------------------------------------------------
 ## Included Libraries:
 https://github.com/sh123/esp32_codec2_arduino/tree/master
