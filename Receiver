@@ -1,0 +1,411 @@
+#include <Arduino.h>
+#include <AudioTools.h>
+#include <si5351.h>
+#include <Wire.h>
+#include <codec2.h>
+#include <math.h>
+#include <stdint.h>
+
+//setting up ESP32-WROOM-32 pins
+#define BUTTON 13
+#define I2S_BCLK 26
+#define I2S_LRCLK 25
+#define I2S_DIN 27
+#define I2S_DOUT 14
+#define I2S_MCLK 0
+
+//configured system specifications
+const int BITS_PER_SAMPLE = 24;
+const int IN_SR = 96000;
+const int DMA_TX_RX_SIZE = 64;
+const int DMA_TX_RX_FRAME = 32;
+const int DMA_COUNT = 8;
+const int NUMBER_OF_CHANNELS = 2;
+
+const int C2_FRAME_SAMPLES = 160;
+const int C2_BITS = 48;
+struct CODEC2 *c2 = nullptr;
+
+#define IDLE_GAP_BITS 0
+#define PREAMBLE_FLAGS 1
+#define POSTAMBLE_FLAGS 0
+const uint8_t PREAMBLE_FLAG = 0x7E;
+#define TX_FRAME_BITS (IDLE_GAP_BITS + (8*PREAMBLE_FLAGS) + (C2_BITS) + (8*POSTAMBLE_FLAGS))
+#define TX_FRAME_BYTES ((TX_FRAME_BITS + 7) / 8)
+
+#define PCM_QUEUE_LEN 8192
+#define FRAME_QUEUE_LEN 32
+QueueHandle_t pcmQueue = NULL;  
+QueueHandle_t frameQueue = NULL;
+QueueHandle_t debugFrameQueue = NULL;
+
+const uint8_t KNOWN_FRAME[6] = {0x11, 0x22, 0x33, 0xFF, 0x55, 0x66};
+
+
+I2SStream i2sStream;
+Si5351 si5351;
+
+//DDS setup (phase accumulators and sine look up table)
+#define TABLE_SIZE 4096
+int32_t sineTable[TABLE_SIZE];
+const float MARK_FREQ = 9600.0f;
+const float SPACE_FREQ = 4800.0f;
+const uint32_t SYMBOL_RATE = 4800;
+uint32_t phaseSpace = 0;
+uint32_t phaseMark = 0;
+const uint32_t PHASE_BITS = 32;
+uint32_t phaseStepMark = 0;
+uint32_t phaseStepSpace = 0;
+const uint32_t QUARTER_PHASE = (1UL << (PHASE_BITS - 2));
+
+volatile bool inFrame = false;
+uint32_t samplesPerSymbol;
+
+//all debugging
+volatile uint32_t symbolCount = 0;
+volatile uint8_t debugBit;
+volatile float normMark, normSpace;
+volatile int64_t debugMarkSum, debugSpaceSum, totalEnergy;
+volatile uint8_t rxByte = 0;
+volatile uint8_t rxBitCount = 0;
+volatile uint32_t rxByteCount = 0;
+volatile uint32_t rx7ECount = 0;
+volatile uint8_t lastByte = 0;
+volatile float normVal = 0;
+
+
+uint32_t phaseIncrement(float freq) {
+    return (uint32_t)((freq * (1ULL << PHASE_BITS)) / IN_SR);
+}
+
+void createSineTable() {
+    const float amp24 = 8388607.0f;
+    for (int i = 0; i < TABLE_SIZE; i++) {
+        sineTable[i] = (int32_t)(sin(2.0f * PI * i / TABLE_SIZE) * amp24);
+    }
+}
+
+void startI2S() {
+    auto config = i2sStream.defaultConfig(RXTX_MODE);
+    config.sample_rate = IN_SR;
+    config.bits_per_sample = BITS_PER_SAMPLE;
+    config.channels = NUMBER_OF_CHANNELS;
+    config.i2s_format = I2S_STD_FORMAT;
+    config.buffer_count = DMA_COUNT;
+    config.buffer_size = DMA_TX_RX_SIZE;
+    config.is_master = true;
+    config.pin_ws = I2S_LRCLK;
+    config.pin_bck = I2S_BCLK;
+    config.pin_data = I2S_DOUT;
+    config.pin_data_rx = I2S_DIN;
+    config.pin_mck = I2S_MCLK;
+    config.use_apll = true;
+    config.mclk_multiple = I2S_MCLK_MULTIPLE_192;
+    i2sStream.begin(config);
+}
+
+
+
+
+void rxTask(void *pvParameters)
+{
+    //input buffer from ADC (Pmod I2S2), collects 64 samples (256 bytes) per buffer, the same as the transmitter
+    //with 24 data bits in the most significant bits and 8 bits of zero padding in the LSByte
+    int32_t inBuf[DMA_TX_RX_SIZE];
+
+    //keeping track of where at in the symbol currently, and when to decide energy
+    uint32_t sampleInSymbol = 0;
+    uint32_t decisionPoint = (samplesPerSymbol >> 1) + (samplesPerSymbol >> 2);
+
+
+    int64_t iMarkSum = 0;
+    int64_t qMarkSum = 0;
+    int64_t iSpaceSum = 0;
+    int64_t qSpaceSum = 0;
+
+    uint8_t preambleShift = 0;
+    bool searching = true;
+
+    uint8_t payloadBits[6];
+    uint8_t payloadBitCount = 0;
+
+    uint8_t lastBit = 0;
+
+    //amplitude only matters when trying to see if any signal is present, not for comparing, due to
+    //normalization
+    const uint64_t ENERGY_THRESHOLD = 1e9;
+
+    while (1){
+
+    
+         i2sStream.readBytes((uint8_t*)inBuf, DMA_TX_RX_SIZE * sizeof(int32_t));
+
+        for (int f = 0; f < DMA_TX_RX_FRAME; f++){
+            //extracting only the left channel 32 bit (24 data and 8 bits of padding)
+            int32_t sample = inBuf[2*f] >> 8;
+
+            //start of the DDS based non-coherent quadrature matched filters to detect frequencyand extracts digital information
+            //sine look up table for the frequencies looking to detect, at 0 degrees and 90 degrees phase
+            int32_t cosM = sineTable[(phaseMark >> (PHASE_BITS - 12)) & 0xFFF];
+            int32_t sinM = sineTable[((phaseMark + QUARTER_PHASE) >> (PHASE_BITS - 12)) & 0xFFF];
+            int32_t cosS = sineTable[(phaseSpace >> 20) & 0xFFF];
+            int32_t sinS = sineTable[((phaseSpace + QUARTER_PHASE) >> 20) & 0xFFF];
+
+            //multiplying the ADC 24 bit sample with each of the frequencies (in phase and quadrature)
+            //*multiplication in the time domain = convolution in the frequency domain
+            //using 64 bit length data types/variables as accumulators the collect how much energy
+            //is within a certain sample. Two are kept for each frequency, in order to compute the energy
+            //per frequency without having phase. DDS amplitude does not matter because it multiplies both I and Q equally, which multiplies energy 
+            //by a constant factor that cancels out in normalized decision equation.
+            iMarkSum += (int64_t)sample * cosM;
+            qMarkSum += (int64_t)sample * sinM;
+            iSpaceSum += (int64_t)sample * cosS;
+            qSpaceSum += (int64_t)sample * sinS;
+            
+
+            //increasing the phase accumulator for the DDS matched filter frequencies
+            phaseMark += phaseStepMark;
+            phaseSpace += phaseStepSpace;
+
+            //increment the sample count in the current symbol
+            sampleInSymbol++;
+
+            //when to decide to calculate energy, have tried multiple things due to timing issues and inaccuracy when
+            //trying to decide exactly every 20 samples
+            if(sampleInSymbol == decisionPoint){
+
+                //shift to avoid overflow (issue hit with seeing negative numbers) after squaring
+                int64_t mI = iMarkSum >> 20;
+                int64_t mQ = qMarkSum >> 20;
+                int64_t sI = iSpaceSum >> 20;
+                int64_t sQ = qSpaceSum >> 20;
+
+                //calculate energy for frequency detection at both frequencies, not phase dependent
+                int64_t markEnergy = mI*mI + mQ*mQ;
+                int64_t spaceEnergy = sI*sI + sQ*sQ;
+
+                //total energy of the signals together
+                int64_t totalE = markEnergy + spaceEnergy;
+
+                if(totalE > ENERGY_THRESHOLD){
+                    
+                    //setting up bit capture
+                    uint8_t bit;
+
+                    //computing normalized energy, amplitude cancels
+                    float norm = (float)(markEnergy - spaceEnergy) / (float)(markEnergy + spaceEnergy + 1);
+                    normVal = norm;
+                    //hysteresis decision, creating a dead zone capable of being tuned
+                    //have been working with this zone for awhile, will probably change once noise from the channel
+                    //and other frequencies get added after wireless transmission
+                    //0.008 is the same as >> 7, 1/128,
+                    if(norm > 0.008f)
+                        bit = 1;
+                    else if(norm < -0.008f)
+                        bit = 0;
+
+                    else{
+                        //hold
+                        bit = lastBit;
+                    }
+                    
+                    //debugging
+                    lastBit = bit;
+                    debugBit = bit;
+
+                    //two state system set up, first searches for the preamble, right now 0x7E
+                    //and collects bits into preambleShift variable, it constantly searches untl the preamble
+                    //is found. then it switches of searching and sets the buffer for the 6 bytes (48bits) of
+                    //data to be decoded by Codec2 to 0s, emptying it
+                    if(searching){
+                        preambleShift = (preambleShift << 1) | bit;
+
+                        if (preambleShift == PREAMBLE_FLAG){
+                            rx7ECount++;
+                            searching = false;
+                            payloadBitCount = 0;
+                            memset(payloadBits, 0, sizeof(payloadBits));
+                        }
+                    }
+                    else{
+                        //which byte is currently being filled, 0 (0-7) then 1 (8-15) then 2 and so on to 5
+                        uint8_t byteIdx = payloadBitCount >> 3;
+
+                        //serial to parallel conversion, shift the byte and insert new bit at LSB
+                        payloadBits[byteIdx] = (payloadBits[byteIdx] << 1) | bit;
+
+                        //tracking number of bits
+                        payloadBitCount++;
+
+                        //send 48 bits to be decoded by Codec2
+                        if(payloadBitCount == 48){
+                            xQueueSend(frameQueue, payloadBits, 0);
+                            xQueueSend(debugFrameQueue, payloadBits, 0);
+
+                            //debug
+                            rxByteCount += 6;
+
+                            //resetting
+                            searching = true;
+                            preambleShift = 0;
+                            payloadBitCount = 0;
+                        }
+                    }
+                }
+                //when no valid energy is detected over threshold
+                else{
+                    searching = true;
+                    preambleShift = 0;
+                    payloadBitCount = 0;
+                }
+            }
+
+            //after processing all 20 samples, reset the accumulators
+            if(sampleInSymbol >= samplesPerSymbol){
+                iMarkSum = 0;
+                qMarkSum = 0;
+                iSpaceSum = 0;
+                qSpaceSum = 0;
+                sampleInSymbol = 0;
+            }
+        }
+    }
+}
+
+
+
+
+void codec2Task(void *pvParameters) {
+
+    c2 = codec2_create(CODEC2_MODE_2400);
+    if (!c2) {
+        while (1);
+    }
+
+    //setting up frames up 6 bytes to be decoded
+    uint8_t frame[6];
+    //setting up 160 16 bits samples in a buffer as the decoded data
+    int16_t pcm8k[C2_FRAME_SAMPLES];
+
+    while (1) {
+        xQueueReceive(frameQueue, frame, portMAX_DELAY);
+
+        codec2_decode(c2, pcm8k, frame);
+
+        //linear interpolation, have 8kHz sampled 16 bit PCM values, but I2S running at 96kHz, 96/8 = 12
+        for (int i = 0; i < C2_FRAME_SAMPLES; i++) {
+            //takes two samples, pcm8k[i] and pcm8k[i+1], and estimates 
+            int16_t s0 = pcm8k[i];
+            //(condition) ? value_if_true : value_if_false; at the end of the frame, hold the value constant
+            //but if not then just select pcm8k[i+1
+            int16_t s1 = (i + 1 < C2_FRAME_SAMPLES) ? pcm8k[i + 1] : s0;
+
+            //change 6s to 12s if 96khz, add 11 samples in between samples, for a set of 12 samples
+            //the first will be s0, the last will be just below s1, and the next first sample will be s1
+            for (int k = 0; k < 12; k++) {
+                //linear interpolation equation
+                int16_t y = s0 + ((s1 - s0) * k) / 12;
+                xQueueSend(pcmQueue, &y, portMAX_DELAY);
+            }
+        }
+    }
+}
+
+
+void txTask(void *pvParameters) {
+    int32_t outBuf[DMA_TX_RX_SIZE];
+    int16_t s;
+
+    while (1) {
+        
+        for (int i = 0; i < DMA_TX_RX_FRAME; i++) {
+            if (xQueueReceive(pcmQueue, &s, 0) == pdTRUE) {
+               //appropriately shift 16 bit pcm values to proper alignment for I2S, data in most
+               //significant bits
+                int32_t tx = ((int32_t)s) << 16;
+
+                //writing to both channels right now
+                outBuf[2*i] = tx;
+                outBuf[2*i+1] = tx;
+            } 
+            else {
+                outBuf[2*i] = 0;
+                outBuf[2*i+1] = 0;
+            }
+        }
+        
+        i2sStream.write((uint8_t*)outBuf, DMA_TX_RX_SIZE * sizeof(int32_t));
+    }
+}
+
+void setup() {
+    Serial.begin(115200);
+    Wire.begin(21, 22);
+
+    createSineTable();
+
+    phaseStepMark = phaseIncrement(MARK_FREQ);
+    phaseStepSpace = phaseIncrement(SPACE_FREQ);
+
+    samplesPerSymbol = IN_SR / SYMBOL_RATE;
+
+    startI2S();
+
+    frameQueue = xQueueCreate(FRAME_QUEUE_LEN, TX_FRAME_BYTES); 
+    pcmQueue = xQueueCreate(PCM_QUEUE_LEN, sizeof(int16_t));
+    debugFrameQueue = xQueueCreate(8, 6);
+
+    //size in bytes, 8KB 16KB 8KB
+    xTaskCreatePinnedToCore(rxTask, "rxTask", 8192, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(codec2Task, "codec2Task", 16384, NULL, 4, NULL, 1);
+    xTaskCreatePinnedToCore(txTask, "txTask", 8192, NULL, 4, NULL, 0);
+}
+
+void loop() {
+
+    //vTaskDelay(pdMS_TO_TICKS(200));
+
+    //Serial.printf("SYM=%lu Bit=%u Bytes=%lu 7E=%lu\n", symbolCount, debugBit, rxByteCount, rx7ECount);
+    //Serial.printf("Mark=%lld Space=%lld Tot=%lld | Norm=%.2f\n", debugMarkSum, debugSpaceSum, totalEnergy, norm);
+
+    //use in final project when trying to determine norm hys threshold
+    //Serial.printf("Mark=%lld Space=%lld Norm=%.5f\n", markEnergy, spaceEnergy, norm);
+
+    uint8_t dbgFrame[6];
+
+    //print all bits in the capture frame before Codec2 decoding, look to see if they match a select 
+    //string of bytes if sending known frames
+    if (xQueueReceive(debugFrameQueue, dbgFrame, 0) == pdTRUE) {
+
+        Serial.printf("Rx 48 bits: ");
+
+  
+        for (int i = 0; i < 6; i++) {
+            for (int b = 7; b >= 0; b--) {
+            Serial.print((dbgFrame[i] >> b) & 1);
+            }
+            Serial.printf(" ");
+        }
+
+        bool match = true;
+
+        for (int i = 0; i < 6; i++) {
+            if (dbgFrame[i] != KNOWN_FRAME[i]) {
+                match = false;
+                break;
+            }
+        }
+
+        if (match) {
+            Serial.printf(" match!");
+        } 
+        else {
+            Serial.printf(" no match");
+        }
+
+        Serial.printf(" norm=%.2f\n", normVal);
+
+    }
+
+
+}
