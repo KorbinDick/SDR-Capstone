@@ -14,6 +14,12 @@ The system (Tx and Rx) consists of various different components. The goal of the
 
 ## Data Walkthrough and Formatting:
 
+An audio signal is sampled on the Tx side through the use of pulse code modulation (PCM). The Pmod I2S2 ADC/DAC on the Tx side uses a 48kHz sampling rate, with a 24 bit resolution. The ESP32 DMA buffers for I2S store samples in 32 bits of length. The 24 bits of each sample reside in the top three bytes of the four byte long space, resulting in the least significant byte being zero (24 bits of data and 8 bits of LSB padding). The Pmod board is a stereo product, even though it is used in stereo for both the Tx and the Rx, only true stereo is used on the Tx side, specifically when sampling the audio coming into the ADC. 64 samples are "processed" (256 bytes) per I2S DMA buffer read. 
+
+``` void rxTask(void *pvParameters) { ```
+
+These bytes 
+
 ## How Data Looks at the DAC (Tx):
 
 ## Modulation (FSK SSB Achieved through IQ):
