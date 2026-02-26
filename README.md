@@ -22,10 +22,11 @@ The Tx code consists of three FreeRTOS tasks, rxTask, codec2Task, and txTask.
     void rxTask(void *pvParameters)
     void codec2Task(void *pvParameters)
     void txTask(void *pvParameters)
-
 ```
 
-The rxTask in is the beginning of the data flow, where PCM values are read from I2S ESP32 DMA buffers, truncated to true 24 bit values, averaged between the left and right channels, truncated further to 16 bit PCM values, converting to Q31 format, then applying a 3.6kHz cutoff 64 tap filter in Q31, and dropping all samples besides every 6th sample. The goal of rxTask
+rxTask data goes from 32 bit words (24 bits of PCM data)
+
+The rxTask in is the beginning of the data flow. PCM values each representing the audio signals amplitude at a certain time are read from I2S ESP32 DMA buffers, truncated to true 24 bit values, averaged between the left and right channels, truncated further to 16 bit PCM values, converting to Q31 format, then applying a 3.6kHz cutoff 64 tap filter in Q31, and dropping all samples besides every 6th sample. 
 
 
 64 samples are "processed" (256 bytes) per I2S DMA buffer read. 
