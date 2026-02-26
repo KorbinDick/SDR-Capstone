@@ -16,8 +16,6 @@ The system (Tx and Rx) consists of various different components. The goal of the
 
 ## How Data Looks at the DAC (Tx):
 
-## Mixing and LOs (FSK SSB Achieved through IQ):
-
 ## Modulation (FSK SSB Achieved through IQ):
 
 ## Digital Processing on the Receiver Side:
