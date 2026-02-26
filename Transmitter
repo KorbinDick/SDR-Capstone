@@ -79,7 +79,7 @@ int16_t codec_accum[C2_FRAME_SAMPLES];
 
 #define TABLE_SIZE 4096
 int32_t sineTable[TABLE_SIZE];
-const float MARK_FREQ  = 9600.0f;
+const float MARK_FREQ = 9600.0f;
 const float SPACE_FREQ = 4800.0f;
 const uint32_t SYMBOL_RATE = 4800;
 uint32_t phase = 0;
@@ -363,7 +363,7 @@ void txTask(void *pvParameters) {
             int32_t sampleQ = (int32_t)(sineTable[idxQ]) << 8;
 
             
-            
+            //writing in phase FSK to left channel and quadrature FSK to right channel
             outBuf[2*i] = sampleI;
             outBuf[2*i+1] = sampleQ;
 
@@ -409,28 +409,6 @@ void txTask(void *pvParameters) {
 void setup() {
 
     Serial.begin(115200);
-    
-    //SDA-21 SCL-22
-    Wire.begin(21, 22);
-    si5351.init(SI5351_CRYSTAL_LOAD_8PF, 25000000, 0);
-
-    si5351.set_pll(825000000ULL * 100, SI5351_PLLA);
-
-    si5351.set_freq_manual(103125000ULL * 100, 825000000ULL * 100, SI5351_CLK0);
-    si5351.set_freq_manual(103125000ULL * 100, 825000000ULL * 100, SI5351_CLK1);
-
-    si5351.set_int(SI5351_CLK0, 1);
-    si5351.set_int(SI5351_CLK1, 1);
-
-    si5351.set_phase(SI5351_CLK0, 0);
-    si5351.set_phase(SI5351_CLK1, 2);
-
-    si5351.drive_strength(SI5351_CLK0, SI5351_DRIVE_6MA);
-    si5351.drive_strength(SI5351_CLK1, SI5351_DRIVE_6MA);
-
-    si5351.output_enable(SI5351_CLK0, 1);
-    si5351.output_enable(SI5351_CLK1, 1);
-
 
     pinMode(BUTTON, INPUT_PULLDOWN);
 
