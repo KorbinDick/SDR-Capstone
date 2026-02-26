@@ -13,5 +13,3 @@ https://github.com/sh123/esp32_codec2_arduino/tree/master
 
 https://github.com/pschatzmann/arduino-audio-tools
 
-https://github.com/etherkit/Si5351Arduino
-
