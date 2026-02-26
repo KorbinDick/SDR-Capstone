@@ -115,7 +115,10 @@ void rxTask(void *pvParameters)
 
     //keeping track of where at in the symbol currently, and when to decide energy
     uint32_t sampleInSymbol = 0;
+    //20 -> 10100, decision point -> 1010 (10) + 101 (5) = 15th sample
     uint32_t decisionPoint = (samplesPerSymbol >> 1) + (samplesPerSymbol >> 2);
+    //tried 20 ADC samples, saw worse detection
+    //uint32_t decisionPoint = samplesPerSymbol;
 
 
     int64_t iMarkSum = 0;
@@ -174,7 +177,7 @@ void rxTask(void *pvParameters)
             //trying to decide exactly every 20 samples
             if(sampleInSymbol == decisionPoint){
 
-                //shift to avoid overflow (issue hit with seeing negative numbers) after squaring
+                //shift to avoid overflow (issue hit with seeing negative numbers) after squaring, arbitrary 20 chosen
                 int64_t mI = iMarkSum >> 20;
                 int64_t mQ = qMarkSum >> 20;
                 int64_t sI = iSpaceSum >> 20;
@@ -195,13 +198,15 @@ void rxTask(void *pvParameters)
                     //computing normalized energy, amplitude cancels
                     float norm = (float)(markEnergy - spaceEnergy) / (float)(markEnergy + spaceEnergy + 1);
                     normVal = norm;
+
                     //hysteresis decision, creating a dead zone capable of being tuned
                     //have been working with this zone for awhile, will probably change once noise from the channel
                     //and other frequencies get added after wireless transmission
-                    //0.008 is the same as >> 7, 1/128,
-                    if(norm > 0.008f)
+                    //0.008 is the same as 1/(2^7), 1/64 = 0.015625, 1/128 = 0.008, 1/256 = .0039, 1/512 = 0.001953125
+                    //for wired test, best performance is found at either 1/64 or 1/256
+                    if(norm > 0.0039f)
                         bit = 1;
-                    else if(norm < -0.008f)
+                    else if(norm < -0.0039f)
                         bit = 0;
 
                     else{
