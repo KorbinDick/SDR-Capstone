@@ -24,9 +24,38 @@ The Tx code consists of three FreeRTOS tasks, rxTask, codec2Task, and txTask.
     void txTask(void *pvParameters)
 ```
 
-rxTask data goes from 32 bit words (24 bits of PCM data)
+rxTask data starts from 32 bit words (24 bits of PCM data with 8 bits of LSB padding) sampled at 48kHz, and leaves the tasks at 16 bits per sample sampled at 8kHz. Codec2 2400 mode expects data in 16 bit PCM format, sampled at 8kHz. The rxTask passes on the Codec2 ready data in a queue to be encoded in codec2Task.
 
-The rxTask in is the beginning of the data flow. PCM values each representing the audio signals amplitude at a certain time are read from I2S ESP32 DMA buffers, truncated to true 24 bit values, averaged between the left and right channels, truncated further to 16 bit PCM values, converting to Q31 format, then applying a 3.6kHz cutoff 64 tap filter in Q31, and dropping all samples besides every 6th sample. 
+The rxTask in is the beginning of the data flow. PCM values each representing the audio signals amplitude at a certain time are read from I2S ESP32 DMA buffers, truncated to true 24 bit values, averaged between the left and right channels, truncated further to 16 bit PCM values, converting to Q31 format, decimating by applying a 3.6kHz cutoff 64 tap filter in Q31 and dropping all samples besides every 6th sample, a factor of 6 (48:8). Therefore, the data leaving the rxTask is Codec2 2400 mode ready, ready to be encoded into 48 bit frames every 20ms (see Codec2 library).
+
+
+Reading data from I2S DMA buffers:
+
+```
+    size_t bytesNeeded = DMA_TX_RX_SIZE * sizeof(int32_t);
+    int32_t inBuf[DMA_TX_RX_SIZE];
+    int bytesRead = i2sStream.readBytes((uint8_t*)inBuf, bytesNeeded);
+```
+Truncating 32 bit words, extracting 24 bits of PCM samples:
+
+```
+    int32_t L24 = inBuf[2*f] >> 8;
+    int32_t R24 = inBuf[2*f+1] >> 8;
+```
+Averaging the left and right channels together:
+
+```
+    int32_t mono32 = (L24 + R24)/2;
+```
+Truncating to 16 bit PCM values and then scaling to back to Q31:
+
+```
+    int16_t mono16 = (int16_t)(mono32 >> 8);
+    int32_t sample_q31 = ((int32_t)mono16) << 16;
+```
+
+
+
 
 
 64 samples are "processed" (256 bytes) per I2S DMA buffer read. 
