@@ -8,11 +8,14 @@ The project is in development, only one way communication is achieved so far, tr
 
 The system (Tx and Rx) consists of various different components. The goal of the project is to have over the air communication using a software defined radio. A total BOM will be attached at the end of the project duration. The overall effective data rate of the system is 4800 bits per second. Although Codec2 2400 bits per second mode is used, the data transmission speed is 4800bps (bits/second).
 
-Data walkthrough and formatting:
-
-How data looks at the DAC:
+## Current System Diagram:
 
 <img width="1396" height="530" alt="image" src="https://github.com/user-attachments/assets/cbb22c0b-02b5-4ed9-ba58-4ec6feeac8b6" />
+
+## Data Walkthrough and Formatting:
+
+## How Data Looks at the DAC (Tx):
+
 
 
 
