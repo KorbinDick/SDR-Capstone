@@ -58,7 +58,7 @@ Truncating to 16 bit PCM values and then scaling to back to Q31:
 
 
 
-64 samples are "processed" (256 bytes) per I2S DMA buffer read. 
+64 samples are read (256 bytes) per I2S DMA buffer read. The loop inside of rxTask takes 2 samples at a time, each frame is two samples (left and right channels), . 
 
 
 
