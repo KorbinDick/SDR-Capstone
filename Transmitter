@@ -5,11 +5,15 @@
 #include <codec2.h>
 #include <math.h>
 #include <stdint.h>
-#include "fir64_q31.h" 
+#include "fir64_q31.h"
+#include <SPI.h>
 
 //setting up ESP32-WROOM-32 pins
 /* GPIO pins are used for I2S clock/data lines, transmit on/off button, and eventually to change 
-   between modulation techniques (FSK, PSK, QPSK). */
+   between modulation techniques (FSK, PSK, QPSK). VSPI is used for the ADF4360 VCO, for the 38 pin variant, MOSI is GPIO
+   23, SCK (CLK) is GPIO18, and LE is GPIO5.*/
+
+#define LE 5
 #define BUTTON 13
 #define I2S_BCLK 26
 #define I2S_LRCLK 25
@@ -17,7 +21,13 @@
 #define I2S_DOUT 14
 #define I2S_MCLK 0
 
-//Configured system specifications
+//SPI configuration
+//N counter latch
+uint32_t reg_n = 0x10140A; 
+//control latch
+uint32_t reg_control = 0x4FF1A4; 
+//R counter latch
+uint32_t reg_r = 0x3003E9; 
 
 //24 bits per sample (bit resolution/depth)
 const int BITS_PER_SAMPLE = 24;
@@ -143,6 +153,19 @@ void startI2S() {
     config.use_apll = true;
     config.mclk_multiple = I2S_MCLK_MULTIPLE_192;
     i2sStream.begin(config);
+}
+
+//for writing to ADF4360 through SPI
+void writeADF(uint32_t reg) {
+  Serial.println("Write to register.");
+  digitalWrite(LE, LOW);
+  SPI.transfer((reg >> 16) & 0xFF);
+  SPI.transfer((reg >> 8) & 0xFF);
+  SPI.transfer((reg) & 0xFF);
+ 
+  delayMicroseconds(1); 
+  digitalWrite(LE, HIGH); 
+  delayMicroseconds(1);
 }
 
 void rxTask(void *pvParameters) {
@@ -429,6 +452,17 @@ void setup() {
     xTaskCreatePinnedToCore(rxTask, "rxTask", 8192, NULL, 5, NULL, 0);
     xTaskCreatePinnedToCore(codec2Task, "codec2Task", 16384, NULL, 4, NULL, 1);
     xTaskCreatePinnedToCore(txTask, "txTask", 8192, NULL, 4, NULL, 0);
+
+ 
+    pinMode(LE, OUTPUT);
+    digitalWrite(LE, HIGH);
+    SPI.begin();
+    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+    writeADF(reg_control);
+    writeADF(reg_r);
+    writeADF(reg_n);
+    SPI.endTransaction();
+
 }
 
 void loop() {
@@ -460,4 +494,6 @@ if (xQueueReceive(debugCodec2Queue, dbg, 0) == pdTRUE) {
     //Serial.printf("SYMBOL_RATE=%u samplesPerSymbol=%u TX_FRAME_BITS=%u TX_FRAME_BYTES=%u\n", SYMBOL_RATE, samplesPerSymbol, (unsigned)TX_FRAME_BITS, (unsigned)TX_FRAME_BYTES);
     //Serial.printf("tx_ms=%.2f\n", (float)TX_FRAME_BITS / (float)SYMBOL_RATE * 1000.0f);
 
-    }
+}
+
+
