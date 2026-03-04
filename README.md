@@ -10,7 +10,7 @@ The system (Tx and Rx) consists of various different components. The goal of the
 
 ## Current System Diagram:
 
-<img width="1396" height="530" alt="image" src="https://github.com/user-attachments/assets/cbb22c0b-02b5-4ed9-ba58-4ec6feeac8b6" />
+<img width="1314" height="590" alt="image" src="https://github.com/user-attachments/assets/c2c48097-4d04-432b-955b-de7bd69e7e9d" />
 
 ## Data Walkthrough and Formatting:
 
