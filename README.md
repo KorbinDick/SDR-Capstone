@@ -70,9 +70,9 @@ These bytes
 
 ## Digital Processing on the Receiver Side:
 
-##I2S
+## I2S
 
-##Codec2
+## Codec2
 
 
 
