@@ -8,11 +8,11 @@ The project is in development, only one way communication is achieved so far, tr
 
 The system (Tx and Rx) consists of various different components. The goal of the project is to have over the air communication using a software defined radio. A total BOM will be attached at the end of the project duration. The overall effective data rate of the system is 4800 bits per second. Although Codec2 2400 bits per second mode is used, the data transmission speed is 4800bps (bits/second). Through DDS, mark and space frequencies (9.6kHz and 4.8kHz respectively) are used to represent bits, 9.6kHz for logical '1' and 4.8kHz for logical '0'. 
 
-## Current System Diagram:
+## Current System Diagram
 
 <img width="1314" height="590" alt="image" src="https://github.com/user-attachments/assets/c2c48097-4d04-432b-955b-de7bd69e7e9d" />
 
-## Data Walkthrough and Formatting:
+## Data Walkthrough and Formatting
 
 An audio signal is sampled on the Tx side through the use of pulse code modulation (PCM). The Pmod I2S2 ADC/DAC on the Tx side uses a 48kHz sampling rate, with a 24 bit resolution. The ESP32 DMA buffers for I2S store samples in 32 bits of length. The 24 bits of each sample reside in the top three bytes of the four byte long space, resulting in the least significant byte being zero (24 bits of data and 8 bits of LSB padding). The Pmod board is a stereo product, even though it is used in stereo for both the Tx and the Rx, only true stereo is used on the Tx side, specifically when sampling the audio coming into the ADC. 
 
@@ -64,11 +64,11 @@ Truncating to 16 bit PCM values and then scaling to back to Q31:
 
 These bytes 
 
-## How Data Looks at the DAC (Tx):
+## How Data Looks at the DAC (Tx)
 
-## Modulation (FSK SSB Achieved through IQ):
+## Modulation (FSK SSB Achieved through IQ)
 
-## Digital Processing on the Receiver Side:
+## Digital Processing on the Receiver Side
 
 ## I2S
 
@@ -77,7 +77,7 @@ These bytes
 
 
 -----------------------------------------------------------------------
-### Included Libraries:
+### Included Libraries
 https://github.com/sh123/esp32_codec2_arduino/tree/master
 
 https://github.com/pschatzmann/arduino-audio-tools
