@@ -70,11 +70,14 @@ These bytes
 
 ## Digital Processing on the Receiver Side:
 
+##I2S
+
+##Codec2
 
 
 
 -----------------------------------------------------------------------
-## Included Libraries:
+### Included Libraries:
 https://github.com/sh123/esp32_codec2_arduino/tree/master
 
 https://github.com/pschatzmann/arduino-audio-tools
