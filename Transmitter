@@ -175,12 +175,14 @@ void rxTask(void *pvParameters) {
     size_t bytesNeeded = DMA_TX_RX_SIZE * sizeof(int32_t);
     const int TAPS = 64;
 
-    //setting the buffer for the samples 
+    //setting the buffer for the previous samples, oldest at 0, newest at 63
     static int32_t state_q31[TAPS];
 
+    //keeping track of the current state of the system
     int state_pos = 0;
     int in_count = 0;
 
+    //startibg previous sample buffer at all 0s
     for (int i = 0; i < TAPS; ++i){
          state_q31[i] = 0;
     }
@@ -230,8 +232,9 @@ void rxTask(void *pvParameters) {
                 in_count = 0;
 
                 int64_t acc64 = 0;
-                int idx = state_pos - 1;
 
+                //setting index to the newest sample
+                int idx = state_pos - 1;
                 if (idx < 0){ 
                     idx += TAPS;
                 }
@@ -241,15 +244,17 @@ void rxTask(void *pvParameters) {
                 int32_t h_k  = fir64_q31[k];      
                 int32_t x_nk = state_q31[idx];
 
+                //multiplying the filter tap with the sample, and adding to an accumulator, Q31 * Q31 = Q62
                 acc64 += ((int64_t)h_k * x_nk) >> 31;
 
-                idx--;
-
+                    //walking backwards through previous sample buffer
+                    idx--;
                     if (idx < 0){
                         idx += TAPS;
                     }
                 }
 
+                //preventing overflow
                 if (acc64 > 0x7FFFFFFFLL) {
                     acc64 = 0x7FFFFFFFLL;
                 }
@@ -257,8 +262,10 @@ void rxTask(void *pvParameters) {
                     acc64 = -0x80000000LL;
                 }
 
+                //getting to 16 bit length
                 int32_t out32 = (int32_t)(acc64 >> 16);
 
+                //preventing overflow
                 if (out32 > 32767){
                     out32 = 32767; 
                 }
@@ -506,3 +513,4 @@ if (xQueueReceive(debugCodec2Queue, dbg, 0) == pdTRUE) {
     //Serial.printf("tx_ms=%.2f\n", (float)TX_FRAME_BITS / (float)SYMBOL_RATE * 1000.0f);
 
 }
+
