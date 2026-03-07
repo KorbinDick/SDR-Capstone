@@ -175,6 +175,7 @@ void rxTask(void *pvParameters) {
     size_t bytesNeeded = DMA_TX_RX_SIZE * sizeof(int32_t);
     const int TAPS = 64;
 
+    //setting the buffer for the samples 
     static int32_t state_q31[TAPS];
 
     int state_pos = 0;
@@ -217,6 +218,7 @@ void rxTask(void *pvParameters) {
 
             state_q31[state_pos] = sample_q31;
             state_pos++;
+
             if (state_pos >= TAPS){
                 state_pos = 0;
             } 
@@ -242,18 +244,27 @@ void rxTask(void *pvParameters) {
                 acc64 += ((int64_t)h_k * x_nk) >> 31;
 
                 idx--;
-                if (idx < 0){
-                idx += TAPS;
+
+                    if (idx < 0){
+                        idx += TAPS;
+                    }
                 }
-            }
 
-                if (acc64 > 0x7FFFFFFFLL) acc64 = 0x7FFFFFFFLL;
-                if (acc64 < -0x80000000LL) acc64 = -0x80000000LL;
-
+                if (acc64 > 0x7FFFFFFFLL) {
+                    acc64 = 0x7FFFFFFFLL;
+                }
+                if (acc64 < -0x80000000LL) {
+                    acc64 = -0x80000000LL;
+                }
 
                 int32_t out32 = (int32_t)(acc64 >> 16);
-                if (out32 > 32767)  out32 = 32767;
-                if (out32 < -32768) out32 = -32768;
+
+                if (out32 > 32767){
+                    out32 = 32767; 
+                }
+                if (out32 < -32768){
+                    out32 = -32768;
+                } 
 
                 int16_t out16 = (int16_t)out32;
 
@@ -495,5 +506,3 @@ if (xQueueReceive(debugCodec2Queue, dbg, 0) == pdTRUE) {
     //Serial.printf("tx_ms=%.2f\n", (float)TX_FRAME_BITS / (float)SYMBOL_RATE * 1000.0f);
 
 }
-
-
