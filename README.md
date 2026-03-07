@@ -55,7 +55,26 @@ Truncating to 16 bit PCM values and then scaling to back to Q31:
 ```
 
 
-After the samples are in Q31 format, a 64 tap low pass filter (LPF) is applied through convolution. The filter taps can be found in the fir_64_taps_q31.h file. With a decimation factor of 6, going from 48kHz sampled data to 8kHz sampled data, a 3.6kHz cutoff frequency was designed for the filter, to prevent any aliasing.
+After the samples are in Q31 format, a 64 tap low pass filter (LPF) is applied through convolution. The filter taps can be found in the fir_64_taps_q31.h file. With a decimation factor of 6, going from 48kHz sampled data to 8kHz sampled data, a 3.6kHz cutoff frequency was designed for the filter to prevent any aliasing.
+
+64 samples are kept in the state_q31 buffer, and after every sixth PCM sample, the LPF is applied to the most recent 64 samples through convolution. The products are scaled down to prevent the risk of overflow and convert back to Q31.
+
+```
+ for (int k = 0; k < TAPS; k++){
+    int32_t h_k  = fir64_q31[k];      
+    int32_t x_nk = state_q31[idx];
+    acc64 += ((int64_t)h_k * x_nk) >> 31;
+```
+
+Then the Q31 new sample is then scaled down to 16 bits, and sent to the Codec2 through the pcmQueue.
+
+```
+    int32_t out32 = (int32_t)(acc64 >> 16);
+    int16_t out16 = (int16_t)out32;
+    if (xQueueSend(pcmQueue, &out16, pdMS_TO_TICKS(5)) != pdTRUE)
+        pcmQueueDrops++;
+    }
+```
 
 ## How Data Looks at the DAC (Tx)
 
