@@ -60,7 +60,7 @@ After the samples are in Q31 format, a 64 tap low pass filter (LPF) is applied t
 64 samples are kept in the state_q31 buffer, and after every sixth PCM sample, the LPF is applied to the most recent 64 samples through convolution. The products are scaled down to prevent the risk of overflow and convert back to Q31.
 
 ```
- for (int k = 0; k < TAPS; k++){
+ for (int k = 0; k < TAPS; k++)
     int32_t h_k  = fir64_q31[k];      
     int32_t x_nk = state_q31[idx];
     acc64 += ((int64_t)h_k * x_nk) >> 31;
@@ -73,8 +73,27 @@ Then the Q31 new sample is then scaled down to 16 bits, and sent to the Codec2 t
     int16_t out16 = (int16_t)out32;
     if (xQueueSend(pcmQueue, &out16, pdMS_TO_TICKS(5)) != pdTRUE)
         pcmQueueDrops++;
-    }
 ```
+
+After the rxTask, 16 bit samples which are now sampled at 8kHz are sent to the codec2Task through the pcmQueue. Inside the codec2Task, Codec2 2400bps mode is used, where the expected data input format is 16 bit PCM at 8kHz (20ms of input samples * 8kHz = 160 samples) and the output data format is 48 encoded bits.
+
+Creating the Codec2 object in 2400bps mode.
+
+```
+    c2 = codec2_create(CODEC2_MODE_2400);
+        if (!c2) {
+            Serial.println("codec2_create FAILED");
+            while (1) vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+```
+
+Encoding 160 samples in 48 bit (6 byte) payloads.
+
+```
+    codec2_encode(c2, enc, codec_accum);
+```
+
+A buffer holds the 48 bits, MSB first, of the encoded data. Framing is then added to the data. Modularity is this project was a goal to reach such that the user can adjust or change parameters or single variables at the top of the code to change things to their liking, without having to change any operations. Framing gets added by taking named variables such as PREMABLE_FLAG and POSTAMBLE_FLAG, and bit masking is used to set the bits in the frame. The frame is comprised of the payload and the framing bits. As of right the time of writing, with a 48 bit payload (2400bps mode), 8 bits of framing (preamble) are used for receover synchronization and detection.
 
 ## How Data Looks at the DAC (Tx)
 
