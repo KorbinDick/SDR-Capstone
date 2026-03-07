@@ -55,7 +55,7 @@ Truncating to 16 bit PCM values and then scaling to back to Q31:
 ```
 
 
-After the samples are in Q31 format
+After the samples are in Q31 format, a 64 tap low pass filter (LPF) is applied through convolution. The filter taps can be found in the 
 
 ## How Data Looks at the DAC (Tx)
 
