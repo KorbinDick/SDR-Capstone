@@ -55,7 +55,7 @@ Truncating to 16 bit PCM values and then scaling to back to Q31:
 ```
 
 
-After the samples are in Q31 format, a 64 tap low pass filter (LPF) is applied through convolution. The filter taps can be found in the 
+After the samples are in Q31 format, a 64 tap low pass filter (LPF) is applied through convolution. The filter taps can be found in the fir_64_taps_q31.h file. With a decimation factor of 6, going from 48kHz sampled data to 8kHz sampled data, a 3.6kHz cutoff frequency was designed for the filter, to prevent any aliasing.
 
 ## How Data Looks at the DAC (Tx)
 
