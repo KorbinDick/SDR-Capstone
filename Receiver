@@ -5,14 +5,25 @@
 #include <codec2.h>
 #include <math.h>
 #include <stdint.h>
+#include <SPI.h>
+
 
 //setting up ESP32-WROOM-32 pins
+#define LE 5
 #define BUTTON 13
 #define I2S_BCLK 26
 #define I2S_LRCLK 25
 #define I2S_DIN 27
 #define I2S_DOUT 14
 #define I2S_MCLK 0
+
+//SPI configuration
+//N counter latch
+uint32_t reg_n = 0x10140A; 
+//control latch
+uint32_t reg_control = 0x4FF1A4;
+//R counter latch
+uint32_t reg_r = 0x3003E9;
 
 //configured system specifications
 const int BITS_PER_SAMPLE = 24;
@@ -102,6 +113,19 @@ void startI2S() {
     config.use_apll = true;
     config.mclk_multiple = I2S_MCLK_MULTIPLE_192;
     i2sStream.begin(config);
+}
+
+//for writing to ADF4360 through SPI
+void writeADF(uint32_t reg) {
+  Serial.println("Write to register.");
+  digitalWrite(LE, LOW);
+  SPI.transfer((reg >> 16) & 0xFF);
+  SPI.transfer((reg >> 8) & 0xFF);
+  SPI.transfer((reg) & 0xFF);
+ 
+  delayMicroseconds(1); 
+  digitalWrite(LE, HIGH); 
+  delayMicroseconds(1);
 }
 
 
@@ -364,6 +388,18 @@ void setup() {
     xTaskCreatePinnedToCore(rxTask, "rxTask", 8192, NULL, 5, NULL, 0);
     xTaskCreatePinnedToCore(codec2Task, "codec2Task", 16384, NULL, 4, NULL, 1);
     xTaskCreatePinnedToCore(txTask, "txTask", 8192, NULL, 4, NULL, 0);
+
+
+    pinMode(LE, OUTPUT);
+    digitalWrite(LE, HIGH);
+    SPI.begin();
+    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+    writeADF(reg_control);
+    writeADF(reg_r);
+    writeADF(reg_n);
+    SPI.endTransaction();
+
+
 }
 
 void loop() {
