@@ -91,7 +91,7 @@ Encoding 160 samples in 48 bit (6 byte) payloads.
 
 A buffer holds the 48 bits, MSB first, of the encoded data. Framing is then added to the data. Modularity is this project was a goal to reach such that the user can adjust or change parameters or single variables at the top of the code to change things to their liking, without having to change any operations. Framing gets added by taking named variables such as PREMABLE_FLAG and POSTAMBLE_FLAG, and bit masking is used to set the bits in the frame. The frame is comprised of the payload and the framing bits. As of right the time of writing, with a 48 bit payload (2400bps mode), 8 bits of framing (preamble) are used for receover synchronization and detection.
 
-## How Data Looks at the DAC (Tx)
+## Direct Digital Synthesis (Sine Look Up Table and Phase Accumulator)
 
 ## Modulation (FSK SSB Achieved through IQ)
 
