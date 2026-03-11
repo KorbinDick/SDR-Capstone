@@ -77,7 +77,7 @@ Then the Q31 new sample is then scaled down to 16 bits, and sent to the Codec2 t
 
 After the rxTask, 16 bit samples which are now sampled at 8kHz are sent to the codec2Task through the pcmQueue. Inside the codec2Task, Codec2 2400bps mode is used, where the expected data input format is 16 bit PCM at 8kHz (20ms of input samples * 8kHz = 160 samples) and the output data format is 48 encoded bits.
 
-Creating the Codec2 object in 2400bps mode.
+Codec2 instance creation in 2400bps mode.
 
 ```
     c2 = codec2_create(CODEC2_MODE_2400);
