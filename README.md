@@ -89,7 +89,38 @@ Encoding 160 samples in 48 bit (6 byte) payloads.
     codec2_encode(c2, enc, codec_accum);
 ```
 
-A buffer holds the 48 bits, MSB first, of the encoded data. Framing is then added to the data. Modularity is this project was a goal to reach such that the user can adjust or change parameters or single variables at the top of the code to change things to their liking, without having to change any operations. Framing gets added by taking named variables such as PREMABLE_FLAG and POSTAMBLE_FLAG, and bit masking is used to set the bits in the frame. The frame is comprised of the payload and the framing bits. As of right the time of writing, with a 48 bit payload (2400bps mode), 8 bits of framing (preamble) are used for receover synchronization and detection.
+A buffer holds the 48 bits, MSB first, of the encoded data. Framing is then added to the data. Modularity is this project was a goal to reach such that the user can adjust or change parameters or single variables at the top of the code to change things to their liking, without having to change any operations. Framing gets added by taking named variables such as PREMABLE_FLAG and POSTAMBLE_FLAG, and bit masking is used to set the bits in the frame. The frame is comprised of the payload and the framing bits. As of right the time of writing, with a 48 bit payload (2400bps mode), 8 bits of framing (preamble) are used for receover synchronization and detection. The total frame length is 56 bits, 8 + 48. 
+
+Bit masking 8 bits of preamble (0x7E or 01111110) and then the Codec2 payload. MSB first, the preamble and then the payload, where the f rame sizee is 7 bytes. Effectively takes no time to ADD a preamble, transmitting it does take more time.
+
+```
+    for (int p = 0; p < PREAMBLE_FLAGS; p++) {
+        uint8_t flag = PREAMBLE_FLAG;
+            for (int b = 7; b >= 0; b--) {
+                uint8_t bit = (flag >> b) & 1;
+                frame[bitIndex >> 3] |= (bit << (7 - (bitIndex & 7)));
+                bitIndex++;
+            }
+    }
+
+    for (int i = 0; i < 6; i++) {
+        uint8_t x = enc[i];
+            for (int b = 7; b >= 0; b--) {
+                uint8_t bit = (x >> b) & 1;
+                frame[bitIndex >> 3] |= (bit << (7 - (bitIndex & 7)));
+                bitIndex++;
+            }
+    }
+```
+
+This frame is then sent to the txTask through the frameQueue.
+
+```
+    if (xQueueSend(frameQueue, frame, pushTimeout) != pdTRUE) {
+```
+
+The txTask uses the I2S Tx setup, the same sampling rate and bit depth as the Rx side (talking I2S Tx/Rx inside of the Tx side of the system). I2S DMA buffers are written to ultimately with the 24 bit PCM values of the sine tones to be generated, 4.8kHz and 9.6kHz. The data arrives as a 56 bit frame to txTask, but each bit is then mapped to a ceratin one of those freqeuncies as discussed earlier. This is done through DDS (see next header), where a constant phase accumulator is kept and incremented by the phase increment assigned to whichever bit is currently present, and through the use of the accumulator, the sine look up table is indexed for the 24 bit PCM value representing the desired tone.
+
 
 ## Direct Digital Synthesis (Sine Look Up Table and Phase Accumulator)
 
