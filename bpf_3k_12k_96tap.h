@@ -1,5 +1,4 @@
-#ifndef BPF_3K_12K_96TAP_H
-#define BPF_3K_12K_96TAP_H
+#pragma once
 
 #define BPF_TAPS 96
 
@@ -101,5 +100,3 @@ static const int32_t bpfCoeffs[BPF_TAPS] = {
     -497126,
     -141550
 };
-
-#endif
