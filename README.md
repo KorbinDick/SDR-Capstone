@@ -1,6 +1,6 @@
 # Software Defined Radio Capstone / York College of Pennsylvania
 
-ESP32-WROOM-32 based software defined radio project using Pmod I2S2 ADC/DAC, Direct Digital Synthesis (sine LUT and phase accumulator), Codec2, modular framing bits, I/Q based modulation (FSK SSB) and demodulation (Non-coherent quadrature DDS based matched filters). 
+ESP32 based software defined radio project using Pmod I2S2 ADC/DAC, Direct Digital Synthesis (sine LUT and phase accumulator), Codec2, modular framing bits, I/Q based modulation (FSK SSB) and demodulation (Non-coherent quadrature DDS based matched filters). 
 
 Developed in C++, using Arduino IDE, FreeRTOS and I2S configured.
 
