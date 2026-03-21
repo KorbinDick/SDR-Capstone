@@ -1,4 +1,4 @@
-%generate 48 tap LPF (Fs=48k, fc=3600 Hz)
+%generate 64 tap LPF (Fs=48k, fc=3600 Hz)
 clear
 clc
 
