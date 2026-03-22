@@ -119,8 +119,12 @@ This frame is then sent to the txTask through the frameQueue.
     if (xQueueSend(frameQueue, frame, pushTimeout) != pdTRUE) {
 ```
 
-The txTask uses the I2S Tx setup, the same sampling rate and bit depth as the Rx side (talking I2S Tx/Rx inside of the Tx side of the system). I2S DMA buffers are written to ultimately with the 24 bit PCM values of the sine tones to be generated, 4.8kHz and 9.6kHz. The data arrives as a 56 bit frame to txTask, but each bit is then mapped to a ceratin one of those freqeuncies as discussed earlier. This is done through DDS (see next header), where a constant phase accumulator is kept and incremented by the phase increment assigned to whichever bit is currently present, and through the use of the accumulator, the sine look up table is indexed for the 24 bit PCM value representing the desired tone.
+The txTask uses the I2S Tx setup, the same sampling rate and bit depth as the Rx side (talking I2S Tx/Rx inside of the Tx side of the system). I2S DMA buffers are written to ultimately with the 24 bit PCM values of the sine tones to be generated, 4.8kHz and 9.6kHz. The data arrives as a 56 bit frame to txTask, but each bit is then mapped to a ceratin one of those freqeuncies as discussed earlier. This is done through DDS, where a phase accumulator is kept and incremented by the phase increment assigned to whichever bit is currently present, and through the use of the accumulator, the sine look up table is indexed for the 24 bit PCM value representing the desired tone.
 
+
+## I2S
+
+## Codec2
 
 ## Direct Digital Synthesis (Sine Look Up Table and Phase Accumulator)
 
@@ -128,9 +132,6 @@ The txTask uses the I2S Tx setup, the same sampling rate and bit depth as the Rx
 
 ## Data Walkthrough and Formatting (Rx)
 
-## I2S
-
-## Codec2
 
 
 
