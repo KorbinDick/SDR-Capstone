@@ -121,6 +121,25 @@ This frame is then sent to the txTask through the frameQueue.
 
 The txTask uses the I2S Tx setup, the same sampling rate and bit depth as the Rx side (talking I2S Tx/Rx inside of the Tx side of the system). I2S DMA buffers are written to ultimately with the 24 bit PCM values of the sine tones to be generated, 4.8kHz and 9.6kHz. The data arrives as a 56 bit frame to txTask, but each bit is then mapped to a ceratin one of those freqeuncies as discussed earlier. This is done through DDS, where a phase accumulator is kept and incremented by the phase increment assigned to whichever bit is currently present, and through the use of the accumulator, the sine look up table is indexed for the 24 bit PCM value representing the desired tone.
 
+```
+    uint32_t idxI = (phase >> (PHASE_BITS - 12)) & 0xFFF;
+    uint32_t idxQ = ((phase + QUARTER_PHASE) >> (PHASE_BITS - 12)) & 0xFFF;
+
+    int32_t sampleI = (int32_t)(sineTable[idxI]) << 8;
+    int32_t sampleQ = (int32_t)(sineTable[idxQ]) << 8;
+```
+
+After indexing the sine look up table and getting the 24 bit PCM value representing one of the two frequencies, 4.8kHz or 9.6kHz, the 24 PCM value is put in the top most significant bytes in a 32 bit word, with 8 bits of padding and the lower significant byte. The PCM values representing the output frequency is then written back out to I2S DMA buffers, which provide the data to the DAC.
+
+```
+outBuf[2*i] = sampleI;
+outBuf[2*i+1] = sampleQ;
+
+size_t wrote = i2sStream.write((uint8_t*)outBuf, DMA_TX_RX_SIZE * sizeof(int32_t));
+```
+
+The following sections go into more detail for both the Tx and the Rx side.
+
 
 ## I2S
 
