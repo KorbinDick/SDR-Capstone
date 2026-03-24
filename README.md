@@ -128,15 +128,15 @@ I2S (Inter-IC Sound) is the protocol used to transfer data between the Pmod I2S2
 
 Tx:
 LRCLK (WS): 48kHz (sampling rate)
-BCLK: (2 channels) x (24 bit resolution) x (48kHz sampling rate) = 
-MCLK: (384) x (48kHz) = 
+BCLK: (2 channels) x (24 bit resolution) x (48kHz sampling rate) = 2.304MHz
+MCLK: (384) x (48kHz) = 18.432MHz
 
 //add images of clock signals here
 
 Rx:
 LRCLK (WS): 96kHz (sampling rate)
-BCLK: (2 channels) x (24 bit resolution) x (96kHz sampling rate) = 
-MCLK: (384) x (96kHz) = 
+BCLK: (2 channels) x (24 bit resolution) x (96kHz sampling rate) = 4.608MHz
+MCLK: (384) x (96kHz) = 36.864MHz
 
 //add images of clock signals here
 
