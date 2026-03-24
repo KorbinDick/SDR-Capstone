@@ -190,7 +190,9 @@ On the Tx side, framing bits are added right after encoding to 48 bit payloads. 
 
 ## Direct Digital Synthesis (Sine Look Up Table and Phase Accumulator)
 
+One of the main parts of both Tx and Rx sides are the DDS setups. Using a sine look up table and phase accumulator along with synthesizing through DACs, the system would not be possible without it.
 
+There have been many iterations in terms of DDS throughout the process of this project. Primarily the change in sineLUT as the previous iterations (256, 1024 indexes) provided sub-optimal performance when it came to trying to achieve coherent FSK generation.
 
 ## Modulation (FSK SSB Achieved through IQ)
 
