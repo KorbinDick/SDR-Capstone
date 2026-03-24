@@ -134,11 +134,11 @@ MCLK: (384) x (48kHz) =
 //add images of clock signals here
 
 Rx:
-
-Tx:
 LRCLK (WS): 96kHz (sampling rate)
 BCLK: (2 channels) x (24 bit resolution) x (96kHz sampling rate) = 
 MCLK: (384) x (96kHz) = 
+
+//add images of clock signals here
 
 The I2S setup also doubles the MCLK multiplier inherently. The team reached out and discussed with the repository owner and they said it was a bug. It can be worked around in our case due to setting the MCLK multiple as half of the expected value to account for the doubling. It is set has 192, but the library doubles it when apll is set to true.
 
@@ -148,6 +148,9 @@ https://github.com/pschatzmann/arduino-audio-tools/discussions/2192
 ```
     config.mclk_multiple = I2S_MCLK_MULTIPLE_192;
 ```
+
+The I2S configuration is set in I2S_STD_FORMAT, which sets Philips Standard Format, which is commonly used as the most compatible I2S setup. Every LRCLK (WS) cycle, the data has a one bit shift delay.
+https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/i2s.html
 
 ## Codec2
 
