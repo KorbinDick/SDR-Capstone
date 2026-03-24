@@ -97,9 +97,10 @@ const uint32_t PHASE_BITS = 32;
 uint32_t phaseStepMark = 0;
 uint32_t phaseStepSpace = 0;
 volatile uint32_t currentStep = 0;
+//quadrature information is held in the top two bits of the phase accumulator (2^32 represents a full cycle, having to roll over (uint32_t))
+//can add or subtract 2^30 from the current phase increment to delay/advance phase by 90 degrees
+//(2^30)/(2^32) = 1/4
 const uint32_t QUARTER_PHASE = (1UL << (PHASE_BITS - 2));
-const uint32_t HALF_PHASE = (1UL << (PHASE_BITS - 1));
-const uint32_t THREE_QUARTER_PHASE = (3UL << (PHASE_BITS - 2));
 
 
 //objects used via libraries (audio tools and etherkit)
@@ -120,12 +121,12 @@ uint32_t samplesPerSymbol;
 uint32_t samplesLeftThisSymbol;
 
 //calculates phase increment for certain frequency (4.8kHz and 9.6kHz)
-uint32_t phaseIncrement(float freq) {
+uint32_t phaseIncrement(float freq){
     return (uint32_t)((freq * (1ULL << PHASE_BITS)) / IN_SR);
 }
 
 //sets up 24 bit PCM LUT to be indexed by phase increment to synthesize analog tones
-void createSineTable() {
+void createSineTable(){
     const float amp24 = 8388607.0f;
     for (int i = 0; i < TABLE_SIZE; ++i) {
         float angle = 2.0f * PI * (float)i / (float)TABLE_SIZE;
@@ -135,7 +136,7 @@ void createSineTable() {
 
 //I2S setup, MCLK multiple actually turns out to be 384 due to bug known in git repo, spoke to owner about doubling, resolved
 /* I2S is used for the audio input and baseband output of the transmitter. */
-void startI2S() {
+void startI2S(){
     auto config = i2sStream.defaultConfig(RXTX_MODE);
     config.sample_rate = IN_SR;
     config.bits_per_sample = BITS_PER_SAMPLE;
@@ -156,19 +157,18 @@ void startI2S() {
 }
 
 //for writing to ADF4360 through SPI
-void writeADF(uint32_t reg) {
+void writeADF(uint32_t reg){
   Serial.println("Write to register.");
   digitalWrite(LE, LOW);
   SPI.transfer((reg >> 16) & 0xFF);
   SPI.transfer((reg >> 8) & 0xFF);
   SPI.transfer((reg) & 0xFF);
- 
   delayMicroseconds(1); 
   digitalWrite(LE, HIGH); 
   delayMicroseconds(1);
 }
 
-void rxTask(void *pvParameters) {
+void rxTask(void *pvParameters){
     (void)pvParameters;
 
     //64*4 = 256 bytes per I2S read
@@ -182,13 +182,14 @@ void rxTask(void *pvParameters) {
     int state_pos = 0;
     int in_count = 0;
 
-    //startibg previous sample buffer at all 0s
-    for (int i = 0; i < TAPS; ++i){
+    //starting previous sample buffer at all 0s
+    for(int i = 0; i < TAPS; ++i){
          state_q31[i] = 0;
     }
 
-    while (1) {
+    while(1){
 
+            //if transmit button is not held high, the pcmQueue is filled with 0s/flushed of data
             if(!digitalRead(BUTTON)){
                 int16_t dump1;
                     while (xQueueReceive(pcmQueue, &dump1, 0) == pdTRUE){}
@@ -196,38 +197,39 @@ void rxTask(void *pvParameters) {
                 continue;
             }
 
+        //input buffer for 64 samples, each 32 bits of length
         int32_t inBuf[DMA_TX_RX_SIZE];
         
+        //reading 64 samples for I2S DMA buffers
         int bytesRead = i2sStream.readBytes((uint8_t*)inBuf, bytesNeeded);
-        //took out error I2S debugging
-        /*if (bytesRead <= 0) {
-            vTaskDelay(pdMS_TO_TICKS(1));
-            continue;
-        }
-        */
 
 
-        for (int f = 0; f < DMA_TX_RX_FRAME; f++) {
-
+        //for each frame (32 total frames per I2S DMA buffer read)
+        for(int f = 0; f < DMA_TX_RX_FRAME; f++){
+            
+            //take 32 bit PCM sample (data + padding) from each left and right channels, and extract the top 24 data bits
             int32_t L24 = inBuf[2*f] >> 8;
             int32_t R24 = inBuf[2*f+1] >> 8;
 
+            //average the left and right channel data info, this can be changed or deleted to just use one data channel (left/right)
             int32_t mono32 = (L24 + R24)/2;
 
+            //truncate the 24 bit averaged sample to 16 bits, Codec2 required
             int16_t mono16 = (int16_t)(mono32 >> 8);
 
+            //scale back to q31 for LPF
             int32_t sample_q31 = ((int32_t)mono16) << 16;
 
             state_q31[state_pos] = sample_q31;
             state_pos++;
 
-            if (state_pos >= TAPS){
+            if(state_pos >= TAPS){
                 state_pos = 0;
             } 
 
             in_count++;
 
-            if (in_count >= 6) {
+            if(in_count >= 6){
 
                 in_count = 0;
 
@@ -235,11 +237,11 @@ void rxTask(void *pvParameters) {
 
                 //setting index to the newest sample
                 int idx = state_pos - 1;
-                if (idx < 0){ 
+                if(idx < 0){ 
                     idx += TAPS;
                 }
 
-                for (int k = 0; k < TAPS; k++){
+                for(int k = 0; k < TAPS; k++){
 
                 int32_t h_k  = fir64_q31[k];      
                 int32_t x_nk = state_q31[idx];
@@ -249,16 +251,16 @@ void rxTask(void *pvParameters) {
 
                     //walking backwards through previous sample buffer
                     idx--;
-                    if (idx < 0){
+                    if(idx < 0){
                         idx += TAPS;
                     }
                 }
 
                 //preventing overflow
-                if (acc64 > 0x7FFFFFFFLL) {
+                if(acc64 > 0x7FFFFFFFLL){
                     acc64 = 0x7FFFFFFFLL;
                 }
-                if (acc64 < -0x80000000LL) {
+                if(acc64 < -0x80000000LL){
                     acc64 = -0x80000000LL;
                 }
 
@@ -266,10 +268,10 @@ void rxTask(void *pvParameters) {
                 int32_t out32 = (int32_t)(acc64 >> 16);
 
                 //preventing overflow
-                if (out32 > 32767){
+                if(out32 > 32767){
                     out32 = 32767; 
                 }
-                if (out32 < -32768){
+                if(out32 < -32768){
                     out32 = -32768;
                 } 
 
@@ -277,20 +279,20 @@ void rxTask(void *pvParameters) {
 
                 lastFirOut = out16;
 
-                if (xQueueSend(pcmQueue, &out16, pdMS_TO_TICKS(5)) != pdTRUE)
+                if(xQueueSend(pcmQueue, &out16, pdMS_TO_TICKS(5)) != pdTRUE)
                     pcmQueueDrops++;
             }
         }
     }
 }
 
-void codec2Task(void *pvParameters) {
+void codec2Task(void *pvParameters){
     (void)pvParameters;
 
     c2 = codec2_create(CODEC2_MODE_2400);
-    if (!c2) {
+    if(!c2){
         Serial.println("codec2_create FAILED");
-        while (1) vTaskDelay(pdMS_TO_TICKS(1000));
+        while(1) vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
     uint32_t fill = 0;
@@ -299,22 +301,22 @@ void codec2Task(void *pvParameters) {
     uint8_t frame[TX_FRAME_BYTES];
     uint16_t bitIndex = 0;
 
-    while (1) {
+    while(1){
 
-            if (!digitalRead(BUTTON)) {
+            if(!digitalRead(BUTTON)){
 
                 uint8_t dump2[TX_FRAME_BYTES];
-                    while (xQueueReceive(frameQueue, dump2, 0) == pdTRUE){}
+                    while(xQueueReceive(frameQueue, dump2, 0) == pdTRUE){}
 
                 vTaskDelay(pdMS_TO_TICKS(5));
                 continue;
             }
 
-        if (xQueueReceive(pcmQueue, &sample, pdMS_TO_TICKS(200)) == pdTRUE) {
+        if(xQueueReceive(pcmQueue, &sample, pdMS_TO_TICKS(200)) == pdTRUE){
 
             codec_accum[fill++] = sample;
 
-            if (fill >= C2_FRAME_SAMPLES) {
+            if(fill >= C2_FRAME_SAMPLES){
 
                 uint8_t enc[6];
                 memset(enc, 0, sizeof(enc));
@@ -327,32 +329,32 @@ void codec2Task(void *pvParameters) {
                 memset(frame, 0, TX_FRAME_BYTES);
                 bitIndex = 0;
 
-                for (int i = 0; i < IDLE_GAP_BITS; i++) {
+                for(int i = 0; i < IDLE_GAP_BITS; i++){
                     frame[bitIndex >> 3] |= (0 << (7 - (bitIndex & 7)));
                     bitIndex++;
                 }
 
-                for (int p = 0; p < PREAMBLE_FLAGS; p++) {
+                for(int p = 0; p < PREAMBLE_FLAGS; p++){
                     uint8_t flag = PREAMBLE_FLAG;
-                    for (int b = 7; b >= 0; b--) {
+                    for(int b = 7; b >= 0; b--){
                         uint8_t bit = (flag >> b) & 1;
                         frame[bitIndex >> 3] |= (bit << (7 - (bitIndex & 7)));
                         bitIndex++;
                     }
                 }
 
-                for (int i = 0; i < 6; i++) {
+                for(int i = 0; i < 6; i++){
                     uint8_t x = enc[i];
-                    for (int b = 7; b >= 0; b--) {
+                    for(int b = 7; b >= 0; b--){
                         uint8_t bit = (x >> b) & 1;
                         frame[bitIndex >> 3] |= (bit << (7 - (bitIndex & 7)));
                         bitIndex++;
                     }
                 }
 
-                for (int p = 0; p < POSTAMBLE_FLAGS; p++) {
+                for(int p = 0; p < POSTAMBLE_FLAGS; p++){
                     uint8_t flag = POSTAMBLE_FLAG;
-                    for (int b = 7; b >= 0; b--) {
+                    for(int b = 7; b >= 0; b--){
                         uint8_t bit = (flag >> b) & 1;
                         frame[bitIndex >> 3] |= (bit << (7 - (bitIndex & 7)));
                         bitIndex++;
@@ -361,20 +363,21 @@ void codec2Task(void *pvParameters) {
                 
 
                 const TickType_t pushTimeout = pdMS_TO_TICKS(5);
-                if (xQueueSend(frameQueue, frame, pushTimeout) != pdTRUE) {
+                if(xQueueSend(frameQueue, frame, pushTimeout) != pdTRUE){
                     fifoPushFailCount++;
                 }
                 fill = 0;
             }
 
-        } else {
+        }
+        else{
             taskYIELD();
         }
     }
 }
 
 
-void txTask(void *pvParameters) {
+void txTask(void *pvParameters){
     (void)pvParameters;
 
     int32_t outBuf[DMA_TX_RX_SIZE];
@@ -388,9 +391,9 @@ void txTask(void *pvParameters) {
     samplesLeftThisSymbol = samplesPerSymbol;
     currentStep = phaseStepSpace;
 
-    while (1) {
+    while(1){
 
-        for (int i = 0; i < DMA_TX_RX_FRAME; i++) {
+        for(int i = 0; i < DMA_TX_RX_FRAME; i++){
 
             phase += currentStep;
 
@@ -409,27 +412,28 @@ void txTask(void *pvParameters) {
             outBuf[2*i+1] = sampleQ;
 
 
-            if (--samplesLeftThisSymbol == 0) {
+            if(--samplesLeftThisSymbol == 0){
                 
                 uint8_t nextBit = 0;
 
-                if (usingIdle) {
+                if(usingIdle){
 
                     nextBit = 0;
                     isIdle = usingIdle;
 
-                    if (xQueueReceive(frameQueue, frame, 0) == pdTRUE) {
+                    if(xQueueReceive(frameQueue, frame, 0) == pdTRUE){
                         usingIdle = false;
                         bitIndex = 0;
                         nextBit = (frame[0] >> 7) & 1;
                     }
 
-                } else {
+                }
+                else{
                     nextBit = (frame[bitIndex >> 3] >> (7 - (bitIndex & 7))) & 1;
                     bitIndex++;
                     isIdle = usingIdle;
 
-                    if (bitIndex >= totalBits) {
+                    if(bitIndex >= totalBits){
                         usingIdle = true;
                     }
                 }
@@ -447,31 +451,39 @@ void txTask(void *pvParameters) {
 }
 
 
-void setup() {
+void setup(){
 
     Serial.begin(115200);
 
+    //button for transmitting
     pinMode(BUTTON, INPUT_PULLDOWN);
 
+    //creating the sineLUT
     createSineTable();
+
+    //calcualting the phase increment of the digital LOs
     phaseStepMark = phaseIncrement(MARK_FREQ);
     phaseStepSpace = phaseIncrement(SPACE_FREQ);
 
+    //for Tx, 48kHz sampling rate is used, 48kHz/4800bps = 10 samples per symbol
     samplesPerSymbol = IN_SR / SYMBOL_RATE;
     samplesLeftThisSymbol = samplesPerSymbol;
 
     startI2S();
+
+    //creating queues for transport of data between tasks
     pcmQueue = xQueueCreate(PCM_QUEUE_LEN, sizeof(int16_t));
     frameQueue = xQueueCreate(FRAME_QUEUE_LEN, TX_FRAME_BYTES); 
     debugCodec2Queue = xQueueCreate(8, 6);
 
 
-
+    //task creation, different priorities have been tried to find the performance along with size
+    //Codec2 requires at least 16KB, error thrown if less
     xTaskCreatePinnedToCore(rxTask, "rxTask", 8192, NULL, 5, NULL, 0);
     xTaskCreatePinnedToCore(codec2Task, "codec2Task", 16384, NULL, 4, NULL, 1);
     xTaskCreatePinnedToCore(txTask, "txTask", 8192, NULL, 4, NULL, 0);
 
- 
+    //SPI configuration
     pinMode(LE, OUTPUT);
     digitalWrite(LE, HIGH);
     SPI.begin();
@@ -483,15 +495,17 @@ void setup() {
 
 }
 
-void loop() {
+void loop(){
 
-    //vTaskDelay(pdMS_TO_TICKS(1000));
+    //ALL USED FOR DEBUGGING
+
+    //vTaskDelay(pdMS_TO_TICKS(100));
     //Serial.printf("FIR=%d nextBit=%d frameQ=%u\n", lastFirOut, lastNextBit, (unsigned)uxQueueMessagesWaiting(frameQueue));
     //Serial.printf("Frames=%u pushFail=%u pcmDrops=%u idling=%d\n", encodedFrames, fifoPushFailCount, pcmQueueDrops, isIdle);
 
     uint8_t dbg[6];
 
-if (xQueueReceive(debugCodec2Queue, dbg, 0) == pdTRUE) {
+    if (xQueueReceive(debugCodec2Queue, dbg, 0) == pdTRUE) {
 
     Serial.print("Codec2 48 bits: ");
 
@@ -503,7 +517,7 @@ if (xQueueReceive(debugCodec2Queue, dbg, 0) == pdTRUE) {
     }
 
     Serial.println();
-}
+    }
 
     
     if(digitalRead(BUTTON)){
@@ -513,4 +527,3 @@ if (xQueueReceive(debugCodec2Queue, dbg, 0) == pdTRUE) {
     //Serial.printf("tx_ms=%.2f\n", (float)TX_FRAME_BITS / (float)SYMBOL_RATE * 1000.0f);
 
 }
-
