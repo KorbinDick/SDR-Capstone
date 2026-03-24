@@ -112,8 +112,6 @@ volatile uint32_t fifoPushFailCount = 0;
 volatile uint32_t pcmQueueDrops = 0;
 volatile uint32_t encodedFrames = 0;
 volatile int16_t lastFirOut = 0;
-volatile int lastNextBit = -1;
-
 
 //see setup
 bool currentBit = 0;
@@ -229,6 +227,7 @@ void rxTask(void *pvParameters){
 
             in_count++;
 
+            //still accumulate input samples, but every 6 sixth input sample, perform convolution with the LPF on the most recent sample (and the 63 before)
             if(in_count >= 6){
 
                 in_count = 0;
@@ -246,7 +245,7 @@ void rxTask(void *pvParameters){
                 int32_t h_k  = fir64_q31[k];      
                 int32_t x_nk = state_q31[idx];
 
-                //multiplying the filter tap with the sample, and adding to an accumulator, Q31 * Q31 = Q62
+                //multiplying the filter tap with the sample, and adding to an accumulator, Q31 * Q31 = Q62, shifting back down instantly
                 acc64 += ((int64_t)h_k * x_nk) >> 31;
 
                     //walking backwards through previous sample buffer
@@ -303,6 +302,7 @@ void codec2Task(void *pvParameters){
 
     while(1){
 
+            //same as rxTask, if there is no button pushed, flush the frameQueue
             if(!digitalRead(BUTTON)){
 
                 uint8_t dump2[TX_FRAME_BYTES];
@@ -314,18 +314,22 @@ void codec2Task(void *pvParameters){
 
         if(xQueueReceive(pcmQueue, &sample, pdMS_TO_TICKS(200)) == pdTRUE){
 
+            //fill codec2 buffer with 160 samples, 0 to 159
             codec_accum[fill++] = sample;
 
             if(fill >= C2_FRAME_SAMPLES){
 
+                //setting up 48 bit buffer for encoded data
                 uint8_t enc[6];
                 memset(enc, 0, sizeof(enc));
 
+                //encode the 160 PCM 16 bit samples into 48 bits
                 codec2_encode(c2, enc, codec_accum);
                 encodedFrames++;
 
                 xQueueSend(debugCodec2Queue, enc, 0);
 
+                //seeting up buffer the hold total frame (framing + payload bits)
                 memset(frame, 0, TX_FRAME_BYTES);
                 bitIndex = 0;
 
@@ -334,6 +338,9 @@ void codec2Task(void *pvParameters){
                     bitIndex++;
                 }
 
+                //all for loops for adding bits to frame buffer to send to txTask
+                //preamble flag = 0x7E, 8 bits, 01111110
+                //bit mask the current bit to where bitIndex is, 0 =  MSB of frame
                 for(int p = 0; p < PREAMBLE_FLAGS; p++){
                     uint8_t flag = PREAMBLE_FLAG;
                     for(int b = 7; b >= 0; b--){
@@ -343,6 +350,8 @@ void codec2Task(void *pvParameters){
                     }
                 }
 
+                //taking the payload and adding it after the idle and preamble framing bits
+                //same bit mask process, for the 6 bytes, bit mask them MSB first
                 for(int i = 0; i < 6; i++){
                     uint8_t x = enc[i];
                     for(int b = 7; b >= 0; b--){
@@ -380,14 +389,17 @@ void codec2Task(void *pvParameters){
 void txTask(void *pvParameters){
     (void)pvParameters;
 
+    //I2S output buffer is the same size as input buffer
     int32_t outBuf[DMA_TX_RX_SIZE];
 
+    //frame buffer for receiving bytes from the frameQueue
     uint8_t frame[TX_FRAME_BYTES];
     uint16_t bitIndex = 0;
     const uint16_t totalBits = TX_FRAME_BITS;
 
     bool usingIdle = true;
 
+    //setting the current step to start at idle (space increment) and the samples left at 10
     samplesLeftThisSymbol = samplesPerSymbol;
     currentStep = phaseStepSpace;
 
@@ -395,6 +407,8 @@ void txTask(void *pvParameters){
 
         for(int i = 0; i < DMA_TX_RX_FRAME; i++){
 
+            
+            //each iteration of the loop, each frame, the current phase accumulator is increased by the current step
             phase += currentStep;
 
         
@@ -411,11 +425,13 @@ void txTask(void *pvParameters){
             outBuf[2*i] = sampleI;
             outBuf[2*i+1] = sampleQ;
 
-
+            //after the 10 DAC samples, such that 10 DAC samples have been transmitted per one symbol, decide what to do next
             if(--samplesLeftThisSymbol == 0){
                 
                 uint8_t nextBit = 0;
 
+                //if the system is in an idle state, such that there are no new frames from codec2Task, check the frameQueue
+                //if there are frames ready to be sent in the frameQueue, turn off from idle, and set the next bit for the phase accumulator as the MSB
                 if(usingIdle){
 
                     nextBit = 0;
@@ -428,6 +444,8 @@ void txTask(void *pvParameters){
                     }
 
                 }
+                //if the system is not using idle, such that there are frames to transmit, iterate through the current frame
+                //only go back to idle after all frame bits are sent, here 56
                 else{
                     nextBit = (frame[bitIndex >> 3] >> (7 - (bitIndex & 7))) & 1;
                     bitIndex++;
@@ -438,13 +456,14 @@ void txTask(void *pvParameters){
                     }
                 }
 
-                lastNextBit = nextBit;
+                //set the current bit to the next bit, decide between the phase increment for the current bit
+                //if the current bit is a logical one, the mark increment is selected, if logical 0 the space increment is selected
+                //reset to 10 DAC samples
                 currentBit = nextBit;
                 currentStep = currentBit ? phaseStepMark : phaseStepSpace;
                 samplesLeftThisSymbol = samplesPerSymbol;
             }
         }
-
 
         size_t wrote = i2sStream.write((uint8_t*)outBuf, DMA_TX_RX_SIZE * sizeof(int32_t));
     }
