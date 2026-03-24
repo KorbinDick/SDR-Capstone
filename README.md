@@ -140,7 +140,7 @@ MCLK: (384) x (96kHz) = 36.864MHz
 
 //add images of clock signals here
 
-The I2S setup also doubles the MCLK multiplier inherently. The team reached out and discussed with the repository owner and they said it was a bug. It can be worked around in our case due to setting the MCLK multiple as half of the expected value to account for the doubling. It is set has 192, but the library doubles it when apll is set to true.
+The I2S setup also doubles the MCLK multiplier inherently. The team reached out and discussed with the repository owner and they said it was a bug. It can be worked around in our case due to setting the MCLK multiple as half of the expected value to account for the doubling. It is set has 192, but the library doubles it when apll (audio phase locked loop) is set to true.
 
 https://github.com/pschatzmann/arduino-audio-tools/discussions/2192
 
@@ -151,6 +151,12 @@ https://github.com/pschatzmann/arduino-audio-tools/discussions/2192
 
 The I2S configuration is set in I2S_STD_FORMAT, which sets Philips Standard Format, which is commonly used as the most compatible I2S setup. Every LRCLK (WS) cycle, the data has a one bit shift delay.
 https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/i2s.html
+
+## FreeRTOS
+
+FreeRTOS is used for task/thread allocation and communication. Since the audio transmitted would be in real time, it is needed to have different tasks/threads handling different responsabilites when regarding the data. The ESP32 variant is a dual core microcontrller, each core is single threaded and time slices allocation of the core among tasks/threads. However, having two cores means effective 'parallelism', where one core can handle a thread and the other can handle a separate thread. This use of FreeRTOS comes in handy when much is to be done with the data, such as applying digital filters, I2S reads/writes, and data transmission between threads/tasks. Queues are used of specific length and data type to move data from task to task. As stated earlier, the Tx side has three tasks and the Rx side also has the same three tasks. The queues on the Rx and Tx side are effectively inverse of each other, such that the frame queue in Tx is for data going from the codec2Task to the txTask, and for the Rx side it is for going from the rxTask to the codec2Task. The pcmQueue is used in the same way as the frame queue, such that on the Tx side it is for buffering data from the rxTask to the codec2Task, and on the Rx side it is for buffering data from the codec2Task to the txTask.
+
+https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/freertos.html
 
 ## Codec2
 
