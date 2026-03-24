@@ -150,6 +150,7 @@ https://github.com/pschatzmann/arduino-audio-tools/discussions/2192
 ```
 
 The I2S configuration is set in I2S_STD_FORMAT, which sets Philips Standard Format, which is commonly used as the most compatible I2S setup. Every LRCLK (WS) cycle, the data has a one bit shift delay.
+
 https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/i2s.html
 
 ## FreeRTOS
