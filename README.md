@@ -124,7 +124,30 @@ The txTask uses the I2S Tx setup, the same sampling rate and bit depth as the Rx
 
 ## I2S
 
-I2S (Inter-IC Sound) is the protocol used to transfer data between the Pmod I2S2 ADC/DAC and the ESP32. The audiotools library (see libraries section) is used for high level control of the ESP32 I2S capablities, such as setting LRCLK, MCLK, BCLK, DMA buffer count, DMA buffer size, sampling rate, and bit resolution. I2S is used on each the Tx side and Rx side, however, the only difference between the two are that Tx uses a sampling rate of 48kHz, Rx uses 96kHz. Both Rx and Tx use RXTX mode, meaning data is carried on two channels, effectively stereo audio. Even though the data is carried on two channels, data is taken from those channels and put on those channels in different ways throughout the system. On the Tx side, an audio signal is sampled at 48kHz, data arriving on both the left and right channels. The Tx code currentyl averages the two channels together, taking the corresponding left and right sample making up a frame. Another possible implementation is just using one of the incoming channels. You may ask why use RXTX mode on the Tx side then? The purpose for this I2S mode is because the ESP32 data out to the data is also stereo, meaning there can be different data on the two channels, which together make one frame. I/Q FSK signals are generated through DDS (upcoming section) at a 24 bit scale, however, one of the channels (right in this case) has been adjusted to have a 90 degree phase offset relative to the other channel (left channel). 24 bit PCM values representing one of the two frequencies are then written to the I2S DMA buffer to go out to the DAC. By using stereo channels, it is possible to get effective 'baseband' FSK I/Q signals. 
+I2S (Inter-IC Sound) is the protocol used to transfer data between the Pmod I2S2 ADC/DAC and the ESP32. The audiotools library (see libraries section) is used for high level control of the ESP32 I2S capablities, such as setting LRCLK, MCLK, BCLK, DMA buffer count, DMA buffer size, sampling rate, and bit resolution. I2S is used on each the Tx side and Rx side, however, the only difference between the two are that Tx uses a sampling rate of 48kHz, Rx uses 96kHz. Both Rx and Tx use RXTX mode, meaning data is carried on two channels, effectively stereo audio. Even though the data is carried on two channels, data is taken from those channels and put on those channels in different ways throughout the system. On the Tx side, an audio signal is sampled at 48kHz, data arriving on both the left and right channels. The Tx code currentyl averages the two channels together, taking the corresponding left and right sample making up a frame. Another possible implementation is just using one of the incoming channels. You may ask why use RXTX mode on the Tx side then? The purpose for this I2S mode is because the ESP32 data out to the data is also stereo, meaning there can be different data on the two channels, which together make one frame. I/Q FSK signals are generated through DDS (upcoming section) at a 24 bit scale, however, one of the channels (right in this case) has been adjusted to have a 90 degree phase offset relative to the other channel (left channel). 24 bit PCM values representing one of the two frequencies are then written to the I2S DMA buffer to go out to the DAC. By using stereo channels, it is possible to get effective 'baseband' FSK I/Q signals. The ESP32 is acting as the master to the Pmod I2S2 board, generating three control clock signals; LRCLK (Word Select), BCLK, and MCLK.
+
+Tx:
+LRCLK (WS): 48kHz (sampling rate)
+BCLK: (2 channels) x (24 bit resolution) x (48kHz sampling rate) = 
+MCLK: (384) x (48kHz) = 
+
+//add images of clock signals here
+
+Rx:
+
+Tx:
+LRCLK (WS): 96kHz (sampling rate)
+BCLK: (2 channels) x (24 bit resolution) x (96kHz sampling rate) = 
+MCLK: (384) x (96kHz) = 
+
+The I2S setup also doubles the MCLK multiplier inherently. The team reached out and discussed with the repository owner and they said it was a bug. It can be worked around in our case due to setting the MCLK multiple as half of the expected value to account for the doubling. It is set has 192, but the library doubles it when apll is set to true.
+
+https://github.com/pschatzmann/arduino-audio-tools/discussions/2192
+
+
+```
+    config.mclk_multiple = I2S_MCLK_MULTIPLE_192;
+```
 
 ## Codec2
 
