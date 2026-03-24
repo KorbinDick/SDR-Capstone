@@ -155,13 +155,23 @@ https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/periph
 
 ## FreeRTOS
 
-FreeRTOS is used for task/thread allocation and communication. Since the audio transmitted would be in real time, it is needed to have different tasks/threads handling different responsabilites when regarding the data. The ESP32 variant is a dual core microcontrller, each core is single threaded and time slices allocation of the core among tasks/threads. However, having two cores means effective 'parallelism', where one core can handle a thread and the other can handle a separate thread. This use of FreeRTOS comes in handy when much is to be done with the data, such as applying digital filters, I2S reads/writes, and data transmission between threads/tasks. Queues are used of specific length and data type to move data from task to task. As stated earlier, the Tx side has three tasks and the Rx side also has the same three tasks. The queues on the Rx and Tx side are effectively inverse of each other, such that the frame queue in Tx is for data going from the codec2Task to the txTask, and for the Rx side it is for going from the rxTask to the codec2Task. The pcmQueue is used in the same way as the frame queue, such that on the Tx side it is for buffering data from the rxTask to the codec2Task, and on the Rx side it is for buffering data from the codec2Task to the txTask.
+FreeRTOS is used for task/thread allocation and communication. Since the audio transmitted would be in real time, it is needed to have different tasks/threads handling different responsabilites when regarding the data. The ESP32 variant is a dual core microcontrller, each core is single threaded and time slices allocation of the core among tasks/threads. However, having two cores means effective 'parallelism', where one core can handle a thread and the other can handle a separate thread. This use of FreeRTOS comes in handy when much is to be done with the data, such as applying digital filters, I2S reads/writes, and data transmission between threads/tasks. Queues are used of specific length and data type to move data from task to task. 
+
+As stated earlier, the Tx side has three tasks and the Rx side also has the same three tasks. The queues on the Rx and Tx side are effectively inverse of each other, such that the frame queue in Tx is for data going from the codec2Task to the txTask, and for the Rx side it is for going from the rxTask to the codec2Task. The pcmQueue is used in the same way as the frame queue, such that on the Tx side it is for buffering data from the rxTask to the codec2Task, and on the Rx side it is for buffering data from the codec2Task to the txTask.
 
 https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/freertos.html
 
-## Codec2
+## Codec2 and Framing
+
+Codec2 is used to encode/decode the audio data into payloads small enough to be trasnmit at 4800 bits or symbols per second. Due to being open source and available through the Arduino IDE on the ESP32, Codec2 was chosen to achieve narrow band communication. It has been stated previously, but Codec2 2400bps mode is used to encode data, even though the transmission rate is 4800bps through DDS. If you are familiar with data throughout and channel usage/capacity, you should be aware that this will lead to some idle time and inefficient usage of the channel. This has been taken into consideration and is not technically a limitation. The modularity of the software allows users to add framing bits as they would like, allowing different preamble, postamble, error detection or error correction bits (CRC, etc.).
+
+2400bps mode takes 160 16 bit samples at 8kHz (or every 20ms) on the Tx side and encodes the samples into 48 bit payloads, and on the Rx side the opposite happens, decoding 48 bit payloads to 160 16 bit samples, again every 20ms.
+
+On the Tx side, framing bits are added right after encoding to 48 bit payloads. 0x7E (01111110) is used as the projects preamble. The total frame length is is then 56 bits for this projects finish. 
 
 ## Direct Digital Synthesis (Sine Look Up Table and Phase Accumulator)
+
+
 
 ## Modulation (FSK SSB Achieved through IQ)
 
