@@ -8,17 +8,16 @@
 #include <SPI.h>
 #include "bpf_3k_12k_64tap.h"
 
-
 //setting up ESP32-WROOM-32 pins
 #define LE 5
-#define BUTTON 13
 #define I2S_BCLK 26
 #define I2S_LRCLK 25
+#define I2S_MCLK 0
 #define I2S_DIN 27
 #define I2S_DOUT 14
-#define I2S_MCLK 0
 
-//SPI configuration
+//SPI configuration, hardcoded register values for the ADF4360
+//102.9MHz  output frequency at around +5dBm
 //N counter latch
 uint32_t reg_n = 0x10140A; 
 //control latch
@@ -27,6 +26,7 @@ uint32_t reg_control = 0x4FF1A4;
 uint32_t reg_r = 0x3003E9;
 
 //configured system specifications
+//24 bit samples, sampled at 96kHz
 const int BITS_PER_SAMPLE = 24;
 const int IN_SR = 96000;
 const int DMA_TX_RX_SIZE = 64;
@@ -34,10 +34,12 @@ const int DMA_TX_RX_FRAME = 32;
 const int DMA_COUNT = 8;
 const int NUMBER_OF_CHANNELS = 2;
 
+//Codec2 specifications
 const int C2_FRAME_SAMPLES = 160;
 const int C2_BITS = 48;
 struct CODEC2 *c2 = nullptr;
 
+//Framing
 #define IDLE_GAP_BITS 0
 #define PREAMBLE_FLAGS 1
 #define POSTAMBLE_FLAGS 0
@@ -45,19 +47,20 @@ const uint8_t PREAMBLE_FLAG = 0x7E;
 #define TX_FRAME_BITS (IDLE_GAP_BITS + (8*PREAMBLE_FLAGS) + (C2_BITS) + (8*POSTAMBLE_FLAGS))
 #define TX_FRAME_BYTES ((TX_FRAME_BITS + 7) / 8)
 
-#define PCM_QUEUE_LEN 2048
-#define FRAME_QUEUE_LEN 50
+//FreeRTOS queue setup
+#define PCM_QUEUE_LEN 40000
+#define FRAME_QUEUE_LEN 500
 QueueHandle_t pcmQueue = NULL;  
 QueueHandle_t frameQueue = NULL;
 QueueHandle_t debugFrameQueue = NULL;
 
+//debugging know 48 bit payload
 const uint8_t KNOWN_FRAME[6] = {0x11, 0x22, 0x33, 0xFF, 0x55, 0x66};
 
-
 I2SStream i2sStream;
-Si5351 si5351;
 
 //DDS setup (phase accumulators and sine look up table)
+//same thing as on the Tx side, 4096 indexed sineLUT that holds the shape of a sine wave
 #define TABLE_SIZE 4096
 int32_t sineTable[TABLE_SIZE];
 const float MARK_FREQ = 9600.0f;
@@ -69,8 +72,6 @@ const uint32_t PHASE_BITS = 32;
 uint32_t phaseStepMark = 0;
 uint32_t phaseStepSpace = 0;
 const uint32_t QUARTER_PHASE = (1UL << (PHASE_BITS - 2));
-
-volatile bool inFrame = false;
 uint32_t samplesPerSymbol;
 
 //all debugging
@@ -78,27 +79,28 @@ volatile uint32_t symbolCount = 0;
 volatile uint8_t debugBit;
 volatile float normMark, normSpace;
 volatile int64_t debugMarkSum, debugSpaceSum, totalEnergy;
-volatile uint8_t rxByte = 0;
-volatile uint8_t rxBitCount = 0;
-volatile uint32_t rxByteCount = 0;
-volatile uint32_t rx7ECount = 0;
-volatile uint8_t lastByte = 0;
 volatile float normVal = 0;
+volatile int64_t debugtotalE = 0;
 
-
-uint32_t phaseIncrement(float freq) {
+//DDS phase accumulator, phase increment calculation
+//32 bit (2^32) phase wheel/accumulator
+//phase increment is determined based on the frequency wanted to synthesize and the sampling rate
+uint32_t phaseIncrement(float freq){
     return (uint32_t)((freq * (1ULL << PHASE_BITS)) / IN_SR);
 }
 
-void createSineTable() {
+//sine look up table, gets created once at power up
+//scaled to 24 bit values (2^23 - 1 to -2^23), holds the shape of one sine cycle
+//4096 (0 - 4095) indexes, indexed by truncated phase accumulator value for each synthesized frequency
+void createSineTable(){
     const float amp24 = 8388607.0f;
-    for (int i = 0; i < TABLE_SIZE; i++) {
+    for(int i = 0; i < TABLE_SIZE; i++){
         sineTable[i] = (int32_t)(sin(2.0f * PI * i / TABLE_SIZE) * amp24);
     }
 }
 
 //setting up the entire I2S configuration
-void startI2S() {
+void startI2S(){
     auto config = i2sStream.defaultConfig(RXTX_MODE);
     config.sample_rate = IN_SR;
     config.bits_per_sample = BITS_PER_SAMPLE;
@@ -118,7 +120,7 @@ void startI2S() {
 }
 
 //for writing to ADF4360 through SPI
-void writeADF(uint32_t reg) {
+void writeADF(uint32_t reg){
   Serial.println("Write to register.");
   digitalWrite(LE, LOW);
   SPI.transfer((reg >> 16) & 0xFF);
@@ -129,268 +131,275 @@ void writeADF(uint32_t reg) {
   delayMicroseconds(1);
 }
 
-
-
 void rxTask(void *pvParameters){
-    //input buffer from ADC (Pmod I2S2), collects 64 samples (256 bytes) per buffer, the same as the transmitter
-    //with 24 data bits in the most significant bits and 8 bits of zero padding in the LSByte
-    int32_t inBuf[DMA_TX_RX_SIZE];
 
-    //keeping track of where at in the symbol currently, and when to decide energy
-    uint32_t sampleInSymbol = 0;
-    uint32_t decisionPoint = 17;
+  //input buffer from ADC (Pmod I2S2), collects 64 samples (256 bytes) per buffer, the same as the transmitter
+  //with 24 data bits in the most significant bits and 8 bits of zero padding in the LSByte
+  int32_t inBuf[DMA_TX_RX_SIZE];
 
-    int64_t iMarkSum = 0;
-    int64_t qMarkSum = 0;
-    int64_t iSpaceSum = 0;
-    int64_t qSpaceSum = 0;
+  //keeping track of where at in the symbol currently, and when to decide energy
+  uint32_t sampleInSymbol = 0;
+  uint32_t decisionPoint = 14;
 
-    uint8_t preambleShift = 0;
-    bool searching = true;
+  //accumulators for the product of the input samples and the digital LOs
+  int64_t iMarkSum = 0;
+  int64_t qMarkSum = 0;
+  int64_t iSpaceSum = 0;
+  int64_t qSpaceSum = 0;
+  
+  //searching for preamble
+  uint8_t preambleShift = 0;
+  bool searching = true;
+  uint preambleCount = 0;
 
-    uint8_t payloadBits[6];
-    uint8_t payloadBitCount = 0;
+  //seeting up buffer for payload bits to be decoded by Codec2
+  uint8_t payloadBits[6];
+  uint8_t payloadBitCount = 0;
+  uint8_t lastBit = 0;
 
-    uint8_t lastBit = 0;
+  //amplitude only matters when trying to see if any signal is present, not for comparing, due to normalization
+  //const uint64_t ENERGY_THRESHOLD = 1e6;
+  //const uint64_t ENERGY_THRESHOLD = 1e9;
+  const uint64_t ENERGY_THRESHOLD = 5e7;
 
-    //amplitude only matters when trying to see if any signal is present, not for comparing, due to normalization
-    //const uint64_t ENERGY_THRESHOLD = 1e6;
-    //const uint64_t ENERGY_THRESHOLD = 1e9;
-    const uint64_t ENERGY_THRESHOLD = 5e7;
+  //numebr of taps for digital BPF
+  const int TAPS = BPF_TAPS;
 
-    const int TAPS = BPF_TAPS;
-
-    static int32_t state_q31[TAPS];
-
-    int state_pos = 0;
-
-    for (int i = 0; i < TAPS; i++){
+  //for holding samples for applying the BPF
+  static int32_t state_q31[TAPS];
+  int state_pos = 0;
+  for(int i = 0; i < TAPS; i++){
     state_q31[i] = 0;
-    }
+  }
 
-    while (1){
+    while(1){
 
-    
-         i2sStream.readBytes((uint8_t*)inBuf, DMA_TX_RX_SIZE * sizeof(int32_t));
+        //read in 64 samples, each 32 bits, into the input buffer for processing
+        i2sStream.readBytes((uint8_t*)inBuf, DMA_TX_RX_SIZE * sizeof(int32_t));
 
-        
-        for (int f = 0; f < DMA_TX_RX_FRAME; f++){
-            //extracting only the left channel 32 bit (24 data and 8 bits of padding)
+        for(int f = 0; f < DMA_TX_RX_FRAME; f++){
+
+            //shifing the 32 bit sample to extract the top three bytes, 24 bits
+            //then shifting back, redundant but for safety/thought process
             int32_t sample24 = inBuf[2*f] >> 8;
             int32_t sample_q31 = sample24 << 8;
 
+            ///*
+
+            //populating the samples buffer to apply a FIR BPF
             state_q31[state_pos] = sample_q31;
             state_pos++;
-
             if(state_pos >= TAPS){
                 state_pos = 0;
             }
 
+            //for summation of convolution of samples and BPF
             int64_t acc64 = 0;
-
             int idx = state_pos - 1;
             if(idx < 0){
                 idx += TAPS;
             }
 
+            //takes the newest sample, idx = 63, and the previous 63 samples and multiplies the BPF taps by them, and accumulates
             for(int k = 0; k < TAPS; k++){
-            
-                int32_t h_k = bpfCoeffs[k];
-                int32_t x_nk = state_q31[idx];
-
-                acc64 += ((int64_t)h_k * x_nk) >> 31;
-
+                //accumulating products after instantly shifting back to q31 
+                acc64 += ((int64_t)bpfCoeffs[k] * state_q31[idx]) >> 31;
                 idx--;
                 if(idx < 0){
                     idx += TAPS;
                 }
             }
 
+            //clamping after q31 multiplication, might need to change, used in Tx
+            //summation is usuallly most likely larger than q31
             if(acc64 > 0x7FFFFFFFLL){
-                acc64 = 0x7FFFFFFFLL;
+               acc64 = 0x7FFFFFFFLL;
             }
-
             if(acc64 < -0x80000000LL){
-                acc64 = -0x80000000LL;
+               acc64 = -0x80000000LL;
             }
 
-            int32_t filtered = (int32_t)(acc64 >> 16);
+            //changing the accumulator to size 32, shifting by 16 due to q31 being accumulated in 64 size
+            //means 64 taps x q31 size = roughly 2^38, such that shifiting final value right by 16 gets around 22 bits
+            //preserve top significant bits, scale roughly back to 24 bit resolution
+            int32_t sample = (int32_t)(acc64 >> 16);
 
-            //change to this to neagte the bpf
+            //
+            
             //int32_t sample = sample24;
 
-            int32_t sample = filtered;
-
-            //start of the DDS based non-coherent quadrature matched filters to detect frequencyand extracts digital information
-            //sine look up table for the frequencies looking to detect, at 0 degrees and 90 degrees phase
+            //indexing the sine table for each the I/Q of 4800Hz and 9600Hz, for non-coherent detection
             int32_t cosM = sineTable[(phaseMark >> (PHASE_BITS - 12)) & 0xFFF];
-            int32_t sinM = sineTable[((phaseMark + QUARTER_PHASE) >> (PHASE_BITS - 12)) & 0xFFF];
+            int32_t sinM = sineTable[((phaseMark - QUARTER_PHASE) >> (PHASE_BITS - 12)) & 0xFFF];
             int32_t cosS = sineTable[(phaseSpace >> (PHASE_BITS - 12)) & 0xFFF];
-            int32_t sinS = sineTable[((phaseSpace + QUARTER_PHASE) >> (PHASE_BITS - 12)) & 0xFFF];
+            int32_t sinS = sineTable[((phaseSpace - QUARTER_PHASE) >> (PHASE_BITS - 12)) & 0xFFF];
 
-            //multiplying the ADC 24 bit sample with each of the frequencies (in phase and quadrature)
-            //*multiplication in the time domain = convolution in the frequency domain
-            //using 64 bit length data types/variables as accumulators the collect how much energy
-            //is within a certain sample. Two are kept for each frequency, in order to compute the energy
-            //per frequency without having phase. DDS amplitude does not matter because it multiplies both I and Q equally, which multiplies energy 
-            //by a constant factor that cancels out in normalized decision equation.
+            //mulitplication in time, FIR sample multiplied by sineLUT indexed value, frequency conversion
             iMarkSum += (int64_t)sample * cosM;
             qMarkSum += (int64_t)sample * sinM;
             iSpaceSum += (int64_t)sample * cosS;
             qSpaceSum += (int64_t)sample * sinS;
-            
 
-            //increasing the phase accumulator for the DDS matched filter frequencies
+            //increment the phase increment for the phase accumulator, advancing local digital LOs
+            //uint32_t wraps naturally
             phaseMark += phaseStepMark;
             phaseSpace += phaseStepSpace;
 
-            //increment the sample count in the current symbol
+            //increment the sample count currently in symbol
             sampleInSymbol++;
 
-            //when to decide to calculate energy, have tried multiple things due to timing issues and inaccuracy when
-            //trying to decide exactly every 20 samples
-            if(sampleInSymbol == decisionPoint){
+      //when to decide to calculate energy, have tried multiple things due to timing issues and inaccuracy when
+      //trying to decide exactly every 20 samples
+      if(sampleInSymbol == decisionPoint){
 
-                //shift to avoid overflow (issue hit with seeing negative numbers) after squaring, arbitrary 20 chosen
-                int64_t mI = iMarkSum >> 20;
-                int64_t mQ = qMarkSum >> 20;
-                int64_t sI = iSpaceSum >> 20;
-                int64_t sQ = qSpaceSum >> 20;
+        //shift to avoid overflow (issue hit with seeing negative numbers/errors thrown) after squaring, 
+        //arbitrary 20 chosen
+        int64_t mI = iMarkSum >> 20;
+        int64_t mQ = qMarkSum >> 20;
+        int64_t sI = iSpaceSum >> 20;
+        int64_t sQ = qSpaceSum >> 20;
 
-                //calculate energy for frequency detection at both frequencies, not phase dependent
-                int64_t markEnergy = mI*mI + mQ*mQ;
-                int64_t spaceEnergy = sI*sI + sQ*sQ;
+        //calculate energy for frequency detection at both frequencies, not phase dependent
+        int64_t markEnergy = mI*mI + mQ*mQ;
+        int64_t spaceEnergy = sI*sI + sQ*sQ;
 
-                //total energy of the signals together
-                int64_t totalE = markEnergy + spaceEnergy;
+        //total energy of the signals together
+        int64_t totalE = markEnergy + spaceEnergy;
 
-                if(totalE > ENERGY_THRESHOLD){
-                    
-                    //setting up bit capture
-                    uint8_t bit;
+        if(totalE > ENERGY_THRESHOLD){
 
-                    //computing normalized energy, amplitude cancels
-                    float norm = (float)(markEnergy - spaceEnergy) / (float)(markEnergy + spaceEnergy + 1);
-                    normVal = norm;
+          //setting up bit capture
+          uint8_t bit;
 
-                    //hysteresis decision, creating a dead zone capable of being tuned
-                    //have been working with this zone for awhile, will probably change once noise from the channel
-                    //and other frequencies get added after wireless transmission
-                    //0.008 is the same as 1/(2^7), 1/64 = 0.015625, 1/128 = 0.008, 1/256 = .0039, 1/512 = 0.001953125
-                    //for wired test, best performance is found at either 1/64 or 1/256
-                    if(norm > 0.0039f)
-                        bit = 1;
-                    else if(norm < -0.0039f)
-                        bit = 0;
+          //computing normalized energy, amplitude cancels
+          float norm = (float)(markEnergy - spaceEnergy) / (float)(markEnergy + spaceEnergy + 1);
+          normVal = norm;
 
-                    else{
-                        //hold
-                        bit = lastBit;
-                    }
-                    
-                    //debugging
-                    lastBit = bit;
-                    debugBit = bit;
+          //hysteresis decision, creating a dead zone capable of being tuned
+          //have been working with this zone for awhile, will probably change once noise from the channel
+          //and other frequencies get added after wireless transmission
+          //0.008 is the same as 1/(2^7), 1/64 = 0.015625, 1/128 = 0.008, 1/256 = .0039, 1/512 = 0.001953125
+          //for wired test, best performance is found at either 1/64 or 1/256
+          if(norm > 0.039f){
+            bit = 1;
+          }
+          else if(norm < -0.039f){
+            bit = 0;
+          }
+          else{
+            //hold
+            bit = lastBit;
+          }
 
-                    //two state system set up, first searches for the preamble, right now 0x7E
-                    //and collects bits into preambleShift variable, it constantly searches untl the preamble
-                    //is found. then it switches of searching and sets the buffer for the 6 bytes (48bits) of
-                    //data to be decoded by Codec2 to 0s, emptying it
-                    if(searching){
-                        preambleShift = (preambleShift << 1) | bit;
+          //debugging
+          lastBit = bit;
+          debugBit = bit;
 
-                        if (preambleShift == PREAMBLE_FLAG){
-                            rx7ECount++;
-                            searching = false;
-                            payloadBitCount = 0;
-                            memset(payloadBits, 0, sizeof(payloadBits));
-                        }
-                    }
-                    else{
-                        //which byte is currently being filled, 0 (0-7) then 1 (8-15) then 2 and so on to 5
-                        uint8_t byteIdx = payloadBitCount >> 3;
+          //two state system set up, first searches for the preamble, right now 0x7E
+          //and collects bits into preambleShift variable, it constantly searches untl the preamble
+          //is found. then it switches of searching and sets the buffer for the 6 bytes (48bits) of
+          //data to be decoded by Codec2 to 0s, emptying it
+          if(searching){
+            preambleShift = (preambleShift << 1) | bit;
 
-                        //serial to parallel conversion, shift the byte and insert new bit at LSB
-                        payloadBits[byteIdx] = (payloadBits[byteIdx] << 1) | bit;
 
-                        //tracking number of bits
-                        payloadBitCount++;
-
-                        //send 48 bits to be decoded by Codec2
-                        if(payloadBitCount == 48){
-                            if (xQueueSend(frameQueue, payloadBits, 0) != pdTRUE) {
-
-                            }
-
-                            xQueueSend(debugFrameQueue, payloadBits, 0);
-
-                            //debug
-                            rxByteCount += 6;
-
-                            //resetting
-                            searching = true;
-                            preambleShift = 0;
-                            payloadBitCount = 0;
-                        }
-                    }
+              
+                if(preambleShift == PREAMBLE_FLAG){
+                  preambleCount++;
+                  preambleShift = 0;
                 }
-                //when no valid energy is detected over threshold
-                else{
-                    searching = true;
-                    preambleShift = 0;
+                
+                
+                  if(preambleCount == PREAMBLE_FLAGS){
+                    preambleCount = 0;
+                    searching = false;
                     payloadBitCount = 0;
+                    memset(payloadBits, 0, sizeof(payloadBits));
                 }
-            }
+          }
+          else{
+            //which byte is currently being filled, 0 (0-7) then 1 (8-15) then 2 and so on to 5
+            uint8_t byteIdx = payloadBitCount >> 3;
 
-            //after processing all 20 samples, reset the accumulators
-            if(sampleInSymbol >= samplesPerSymbol){
-                sampleInSymbol -= samplesPerSymbol;
-                iMarkSum = 0;
-                qMarkSum = 0;
-                iSpaceSum = 0;
-                qSpaceSum = 0;
+            //serial to parallel conversion, shift the byte and insert new bit at LSB
+            payloadBits[byteIdx] = (payloadBits[byteIdx] << 1) | bit;
+
+            //tracking number of bits
+            payloadBitCount++;
+
+            //send 48 bits to be decoded by Codec2
+            if(payloadBitCount == 48){
+              if (xQueueSend(frameQueue, payloadBits, 0) != pdTRUE){
+              }
+
+                //debugging
+              xQueueSend(debugFrameQueue, payloadBits, 0);
+
+              //resetting
+              searching = true;
+              preambleShift = 0;
+              payloadBitCount = 0;
             }
+          }
         }
 
+        //when no valid energy is detected over threshold
+        else{
+          searching = true;
+          preambleShift = 0;
+          payloadBitCount = 0;
+        }
+      }
+
+      //after processing all 20 samples, reset the accumulators
+      if(sampleInSymbol >= samplesPerSymbol){
+        sampleInSymbol -= samplesPerSymbol;
+        iMarkSum = 0;
+        qMarkSum = 0;
+        iSpaceSum = 0;
+        qSpaceSum = 0;
+      }
+
     }
-    
+  }
 }
 
 
 
+void codec2Task(void *pvParameters){
 
-void codec2Task(void *pvParameters) {
-
+    //Codec2 2400bps uses for audio
     c2 = codec2_create(CODEC2_MODE_2400);
-    if (!c2) {
-        while (1);
+    if (!c2){
+        while(1);
     }
 
     //setting up frames up 6 bytes to be decoded
     uint8_t frame[6];
+
     //setting up 160 16 bits samples in a buffer as the decoded data
     int16_t pcm8k[C2_FRAME_SAMPLES];
 
-    while (1) {
+    while(1){
         xQueueReceive(frameQueue, frame, portMAX_DELAY);
 
+        //taking the 48 bit frame and decoding through Codec2, provides 160 frames every 20ms (8kHz)
         codec2_decode(c2, pcm8k, frame);
 
         //linear interpolation, have 8kHz sampled 16 bit PCM values, but I2S running at 96kHz, 96/8 = 12
-        for (int i = 0; i < C2_FRAME_SAMPLES; i++) {
+        for (int i = 0; i < C2_FRAME_SAMPLES; i++){
             //takes two samples, pcm8k[i] and pcm8k[i+1], and estimates 
             int16_t s0 = pcm8k[i];
-            //(condition) ? value_if_true : value_if_false; at the end of the frame, hold the value constant
-            //but if not then just select pcm8k[i+1
+            //(condition) ? value_if_true : value_if_false; 
+            //at the end of the frame, hold the value constant but if not then just select pcm8k[i+1]
             int16_t s1 = (i + 1 < C2_FRAME_SAMPLES) ? pcm8k[i + 1] : s0;
 
-            //change 6s to 12s if 96khz, add 11 samples in between samples, for a set of 12 samples
+            //upssample from 8khz to 96khz, add 11 samples in between samples, for a set of 12 samples
             //the first will be s0, the last will be just below s1, and the next first sample will be s1
-            for (int k = 0; k < 12; k++) {
+            for (int k = 0; k < 12; k++){
                 //linear interpolation equation
                 int16_t y = s0 + ((s1 - s0) * k) / 12;
                 if (xQueueSend(pcmQueue, &y, 0) != pdTRUE) {
-
                 }            
             }
         }
@@ -398,19 +407,21 @@ void codec2Task(void *pvParameters) {
 }
 
 
-void txTask(void *pvParameters) {
+void txTask(void *pvParameters){
+
+    //setting up writing to left and right output DAC channels
     int32_t outBuf[DMA_TX_RX_SIZE];
+    //for capturing 16 bit PCM value from Codec2 decoded frame
     int16_t s;
 
-    while (1) {
+    while(1){
         
-        for (int i = 0; i < DMA_TX_RX_FRAME; i++) {
-            if (xQueueReceive(pcmQueue, &s, portMAX_DELAY)) {
-               //appropriately shift 16 bit pcm values to proper alignment for I2S, data in most
-               //significant bits
+        for (int i = 0; i < DMA_TX_RX_FRAME; i++){
+            if (xQueueReceive(pcmQueue, &s, portMAX_DELAY)){
+               //appropriately shift 16 bit pcm values to proper alignment for I2S, data in most significant bits
                 int32_t tx = ((int32_t)s) << 16;
 
-                //writing to both channels right now
+                //writing to both channels, fill 64 samples (32 total frames) before writing to I2S DMA buffers out to DAC
                 outBuf[2*i] = tx;
                 outBuf[2*i+1] = tx;
             } 
@@ -420,33 +431,41 @@ void txTask(void *pvParameters) {
             }
         }
         
+        //writing 64 samples back to output buffer, the same as rxTask effectively
         i2sStream.write((uint8_t*)outBuf, DMA_TX_RX_SIZE * sizeof(int32_t));
     }
 }
 
-void setup() {
+void setup(){
+    //serial monitor start
     Serial.begin(115200);
-    Wire.begin(21, 22);
-
+    
+    //building sineLUT
     createSineTable();
 
+    //calcualte phase increments for the digital LOs
     phaseStepMark = phaseIncrement(MARK_FREQ);
     phaseStepSpace = phaseIncrement(SPACE_FREQ);
 
+    //96khz/4800symbols/s = 20 samples per symbol
     samplesPerSymbol = IN_SR / SYMBOL_RATE;
 
     startI2S();
 
+    //setting up queues to provide data the different tasks
     frameQueue = xQueueCreate(FRAME_QUEUE_LEN, TX_FRAME_BYTES); 
     pcmQueue = xQueueCreate(PCM_QUEUE_LEN, sizeof(int16_t));
-    debugFrameQueue = xQueueCreate(8, 6);
 
-    //size in bytes, 32KB 16KB 8KB
-    xTaskCreatePinnedToCore(rxTask, "rxTask", 65536, NULL, 5, NULL, 0);
+    //changed to same as frameQueue
+    debugFrameQueue = xQueueCreate(FRAME_QUEUE_LEN, TX_FRAME_BYTES);
+
+    //size in bytes, 64KB 16KB 8KB
+    //sizes had to be changed from Tx due to BPF AND frequency detection being in the same task, lots of multiplies
+    xTaskCreatePinnedToCore(rxTask, "rxTask", 65536, NULL, 6, NULL, 0);
     xTaskCreatePinnedToCore(codec2Task, "codec2Task", 16384, NULL, 4, NULL, 1);
     xTaskCreatePinnedToCore(txTask, "txTask", 8192, NULL, 4, NULL, 1);
 
-    
+    //SPI configuration
     pinMode(LE, OUTPUT);
     digitalWrite(LE, HIGH);
     SPI.begin();
@@ -455,41 +474,38 @@ void setup() {
     writeADF(reg_r);
     writeADF(reg_n);
     SPI.endTransaction();
-    
-
 
 }
 
-void loop() {
+void loop(){
 
-   // vTaskDelay(pdMS_TO_TICKS(200));
+    //ALL JUST USED FOR DEBUG FOR NOW
 
-    //Serial.printf("SYM=%lu Bit=%u Bytes=%lu 7E=%lu\n", symbolCount, debugBit, rxByteCount, rx7ECount);
-    //Serial.printf("Mark=%lld Space=%lld Tot=%lld | Norm=%.2f\n", debugMarkSum, debugSpaceSum, totalEnergy, norm);
+    //vTaskDelay(pdMS_TO_TICKS(50));
 
-    //use in final project when trying to determine norm hys threshold
-    //Serial.printf("Mark=%lld Space=%lld Norm=%.5f\n", markEnergy, spaceEnergy, norm);
+    //Serial.printf("total energy = %lld\n", debugtotalE);
 
-    //Serial.printf("PCM: %u  FRAME: %u\n",
-    //uxQueueMessagesWaiting(pcmQueue),
-    //uxQueueMessagesWaiting(frameQueue));
 
     uint8_t dbgFrame[6];
 
     //print all bits in the capture frame before Codec2 decoding, look to see if they match a select 
     //string of bytes if sending known frames
-    if (xQueueReceive(debugFrameQueue, dbgFrame, 0) == pdTRUE) {
+    if (xQueueReceive(debugFrameQueue, dbgFrame, 0) == pdTRUE){
 
         Serial.printf("Rx 48 bits: ");
 
-  
-        for (int i = 0; i < 6; i++) {
+        //printing bytes of the received to be decoded frame after preamble detection
+        for (int i = 0; i < 6; i++){
             for (int b = 7; b >= 0; b--) {
             Serial.print((dbgFrame[i] >> b) & 1);
             }
             Serial.printf(" ");
         }
 
+            Serial.printf("norm = %.2f\n", normVal);
+
+
+        /*
         bool match = true;
 
         for (int i = 0; i < 6; i++) {
@@ -505,10 +521,9 @@ void loop() {
         else {
             Serial.printf(" no match");
         }
+        */
 
-        Serial.printf(" norm=%.2f\n", normVal);
 
     }
-
 
 }
