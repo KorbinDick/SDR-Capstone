@@ -31,7 +31,7 @@ const int BITS_PER_SAMPLE = 24;
 const int IN_SR = 96000;
 const int DMA_TX_RX_SIZE = 64;
 const int DMA_TX_RX_FRAME = 32;
-const int DMA_COUNT = 8;
+const int DMA_COUNT = 12;
 const int NUMBER_OF_CHANNELS = 2;
 
 //Codec2 specifications
@@ -139,7 +139,7 @@ void rxTask(void *pvParameters){
 
   //keeping track of where at in the symbol currently, and when to decide energy
   uint32_t sampleInSymbol = 0;
-  uint32_t decisionPoint = 14;
+  uint32_t decisionPoint = 17;
 
   //accumulators for the product of the input samples and the digital LOs
   int64_t iMarkSum = 0;
@@ -224,7 +224,7 @@ void rxTask(void *pvParameters){
             //preserve top significant bits, scale roughly back to 24 bit resolution
             int32_t sample = (int32_t)(acc64 >> 16);
 
-            //
+            //*/
             
             //int32_t sample = sample24;
 
@@ -271,23 +271,19 @@ void rxTask(void *pvParameters){
           //setting up bit capture
           uint8_t bit;
 
-          //computing normalized energy, amplitude cancels
-          float norm = (float)(markEnergy - spaceEnergy) / (float)(markEnergy + spaceEnergy + 1);
-          normVal = norm;
+          //CHANGED DIVISION
 
-          //hysteresis decision, creating a dead zone capable of being tuned
-          //have been working with this zone for awhile, will probably change once noise from the channel
-          //and other frequencies get added after wireless transmission
-          //0.008 is the same as 1/(2^7), 1/64 = 0.015625, 1/128 = 0.008, 1/256 = .0039, 1/512 = 0.001953125
-          //for wired test, best performance is found at either 1/64 or 1/256
-          if(norm > 0.039f){
+
+          //computing normalized energy, amplitude cancels
+          int64_t diff = markEnergy - spaceEnergy;
+
+          if(diff > (totalE >> 5)){
             bit = 1;
           }
-          else if(norm < -0.039f){
+          else if(diff < -(totalE >> 5)){
             bit = 0;
           }
           else{
-            //hold
             bit = lastBit;
           }
 
