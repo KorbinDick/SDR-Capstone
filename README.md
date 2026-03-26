@@ -215,7 +215,13 @@ With a 102.9MHz carrier wave and an IF (FSK tones) in the kHz range (4.8kHz/9.6k
 
 To combat this, single sideband suppression is used. This is achieved by generating one of the DDS FSK tones on one of the output channels of the DAC 90 degrees out of phase with the other channel. For the current implementation, LSB (lower sideband) is used. The left channel output of the DAC is usd for the in-phase (0 degrees) FSK signal and the right channel is used as the quadrature path (90 degrees out of phase) in relation to the left channel. The quadrature path is generated as 90 degrees leading the in-phase path.
 
-The ADF4360 is used on both Rx and Tx sides for the carrier wave generation. On the Tx side, quadrature is also needed between carrier wave signals as well to achieve sideband suppression* (used for this project). 
+The ADF4360 is used on both Rx and Tx sides for the carrier wave generation. On the Tx side, quadrature is also needed between carrier wave signals as well to achieve sideband suppression* (used for this project). This means the carrier wave on the Tx side has to be split into an in-phase and a quadrature signal, in order to get the suppression. A hybrid coupler is used to split the LO (local oscillator) signal from the ADF4360 into a +90 degrees signal (in relation to the other carrier wave path) and a 0 degrees signal. The quadrature (+90) signal from the LO is then mixed with the quadrature channel FSK tones and the in-phase LO path is mixed through a separate mixer with the in-phase FSK channel.
+
+Those two upconverted signals are then added together through an RF combiner. The output of the RF combiner results in the upper sideband being suppressed in strength, making it easier to decode at the receiver end, and limiting the signals transmitted over the air.
+
+https://www.dsprelated.com/freebooks/filters/Trigonometric_Identities.html
+https://www.site2241.net/august2025.htm
+https://blog.minicircuits.com/iq-mixers-image-reject-down-conversion-single-sideband-ssb-up-conversion/
 
 ## Data Walkthrough and Formatting (Rx)
 
