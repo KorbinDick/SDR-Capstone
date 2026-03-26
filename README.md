@@ -205,6 +205,18 @@ https://www.analog.com/media/en/training-seminars/tutorials/mt-085.pdf
 
 ## Modulation (FSK SSB Achieved through IQ)
 
+As for the FSK SSB modulation type that was chosen, there is use of both digital and analog types of "modulation". It has already been covered how the ESP32 maps bit streams, 56 bit frames, to DDS generated frequencies. However, due to the limiations of the Pmod I2S2 DAC, the DDS generated frequencies are bounded by the sampling rate. The max sampling rate of the Pmod board is limited to in the kHz range, so generating frequencies at say 102.9MHz is not possible. As the solution to this issue, frequency conversion is used through analog carrier wave modulation. The FSK tones are mixed uo in frequency with a 102.9MHz phase locked VCO generated carrier wave, and then down converted at the Rx side to get back the FSK IF (intermediate frequency) signal, which then is mapped back to Codec2 frames. 
+
+https://digilent.com/reference/pmod/pmodi2s2/reference-manual?redirect=1
+
+Through analog carrier wave modulation, two frequency components (theoretically) are constructed at the output of a mixer. The sum and the difference are the primary (strongest/hottest) signals out of the mixing process, such as the carrier wave with the FSK tones frequencies added to it and the carrier wave with the FSK tones frequencies subtracted from it, in terms of frequency.
+
+With a 102.9MHz carrier wave and an IF (FSK tones) in the kHz range (4.8kHz/9.6kHz), the separation of the two generated frequency components (sidebands) are effectively kHz apart (9.6kHz apart between each +- 4.8kHz frequency and 19.8kHz between the 9.6kHz frequencies). This can add issues with detection and channel usage as double the bandwidth is used, as only one copy or sideband is required for decoding. The information is effectively copied.
+
+To combat this, single sideband suppression is used. This is achieved by generating one of the DDS FSK tones on one of the output channels of the DAC 90 degrees out of phase with the other channel. For the current implementation, LSB (lower sideband) is used. The left channel output of the DAC is usd for the in-phase (0 degrees) FSK signal and the right channel is used as the quadrature path (90 degrees out of phase) in relation to the left channel. The quadrature path is generated as 90 degrees leading the in-phase path.
+
+The ADF4360 is used on both Rx and Tx sides for the carrier wave generation. On the Tx side, quadrature is also needed between carrier wave signals as well to achieve sideband suppression* (used for this project). 
+
 ## Data Walkthrough and Formatting (Rx)
 
 
