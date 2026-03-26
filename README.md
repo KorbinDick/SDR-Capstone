@@ -196,7 +196,11 @@ There have been many iterations in terms of DDS throughout the process of this p
 
 DDS is used on both the Rx and Tx sides. On the Tx side, as previoudly stated, for generating the intermediate frequencies (4.8kHz and 9.6kHz) based on the digital audio bitstream (payloads) and framing after the codec2Task. On the Rx side, it is used as the digital non-coherent frequency detection mechanism.
 
-On the Rx side, samples (after having a bandpass filter applied to them)...
+On the Rx side, samples (after having a bandpass filter applied to them) get mutliplied with the digital LOs (DDS based) in time. This results in a lower and a higher frequency component as the products of the multiplication. If the incoming samples frequency is that of the "matched filter" digital LO, there is a DC component and a higher frequency term, essentially. After accumulating samples, the high frequency term cancels, effectively oscillating around zero, and the DC term adds over accumulation. This is the process which allows the determination of frequency in the incoming signal.
+
+https://www.digikey.com/en/articles/the-basics-of-direct-digital-synthesizers-ddss#:~:text=The%20phase%20accumulator,the%20accumulator%20has%2016%20states
+
+
 
 ## Modulation (FSK SSB Achieved through IQ)
 
