@@ -200,6 +200,7 @@ On the Rx side, samples (after having a bandpass filter applied to them) get mut
 
 https://www.digikey.com/en/articles/the-basics-of-direct-digital-synthesizers-ddss#:~:text=The%20phase%20accumulator,the%20accumulator%20has%2016%20states
 
+https://www.analog.com/media/en/training-seminars/tutorials/mt-085.pdf
 
 
 ## Modulation (FSK SSB Achieved through IQ)
