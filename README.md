@@ -194,6 +194,10 @@ One of the main parts of both Tx and Rx sides are the DDS setups. Using a sine l
 
 There have been many iterations in terms of DDS throughout the process of this project. Primarily the change in sineLUT as the previous iterations (256, 1024 indexes) provided sub-optimal performance when it came to trying to achieve coherent FSK generation.
 
+DDS is used on both the Rx and Tx sides. On the Tx side, as previoudly stated, for generating the intermediate frequencies (4.8kHz and 9.6kHz) based on the digital audio bitstream (payloads) and framing after the codec2Task. On the Rx side, it is used as the digital non-coherent frequency detection mechanism.
+
+On the Rx side, samples (after having a bandpass filter applied to them)...
+
 ## Modulation (FSK SSB Achieved through IQ)
 
 ## Data Walkthrough and Formatting (Rx)
