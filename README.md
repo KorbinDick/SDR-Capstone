@@ -188,7 +188,7 @@ Codec2 is used to encode/decode the audio data into payloads small enough to be 
 
 On the Tx side, framing bits are added right after encoding to 48 bit payloads. 0x7E (01111110) is used as the projects preamble. The total frame length is is then 56 bits for this projects finish. 
 
-## Direct Digital Synthesis (Sine Look Up Table and Phase Accumulator)
+## Direct Digital Synthesis / Numerically Controlled Oscillators (Sine Look Up Table and Phase Accumulator)
 
 One of the main parts of both Tx and Rx sides are the DDS setups. Using a sine look up table and phase accumulator along with synthesizing through DACs, the system would not be possible without it.
 
