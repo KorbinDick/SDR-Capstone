@@ -472,6 +472,7 @@ void txTask(void *pvParameters){
 
 void setup(){
 
+    //serial monitor setup
     Serial.begin(115200);
 
     //button for transmitting
@@ -488,6 +489,7 @@ void setup(){
     samplesPerSymbol = IN_SR / SYMBOL_RATE;
     samplesLeftThisSymbol = samplesPerSymbol;
 
+    //setting all of the I2S configuration
     startI2S();
 
     //creating queues for transport of data between tasks
@@ -524,12 +526,12 @@ void loop(){
 
     uint8_t dbg[6];
 
-    if (xQueueReceive(debugCodec2Queue, dbg, 0) == pdTRUE) {
+    if(xQueueReceive(debugCodec2Queue, dbg, 0) == pdTRUE){
 
     Serial.print("Codec2 48 bits: ");
 
-    for (int i = 0; i < 6; i++) {
-        for (int b = 7; b >= 0; b--) {
+    for(int i = 0; i < 6; i++) {
+        for(int b = 7; b >= 0; b--){
             Serial.print((dbg[i] >> b) & 1);
         }
         Serial.print(" ");
@@ -542,8 +544,4 @@ void loop(){
     if(digitalRead(BUTTON)){
       //Serial.printf("Button Pushed!\n");
     }
-    //Serial.printf("SYMBOL_RATE=%u samplesPerSymbol=%u TX_FRAME_BITS=%u TX_FRAME_BYTES=%u\n", SYMBOL_RATE, samplesPerSymbol, (unsigned)TX_FRAME_BITS, (unsigned)TX_FRAME_BYTES);
-    //Serial.printf("tx_ms=%.2f\n", (float)TX_FRAME_BITS / (float)SYMBOL_RATE * 1000.0f);
-
 }
-
