@@ -235,7 +235,7 @@ https://blog.minicircuits.com/iq-mixers-image-reject-down-conversion-single-side
 
 
 -----------------------------------------------------------------------
-### Essential Documents/Sources:
+## Documents/Sources:
 
 Libraries: [Codec2](https://github.com/sh123/esp32_codec2_arduino/tree/master), [Audio Tools](https://github.com/pschatzmann/arduino-audio-tools)
 
