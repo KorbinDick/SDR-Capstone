@@ -239,11 +239,11 @@ https://blog.minicircuits.com/iq-mixers-image-reject-down-conversion-single-side
 
 Libraries: [Codec2](https://github.com/sh123/esp32_codec2_arduino/tree/master), [Audio Tools](https://github.com/pschatzmann/arduino-audio-tools)
 
-ESP32 (microcontroller): [WROOM-32 Datasheet](https://documentation.espressif.com/esp32-wroom-32_datasheet_en.pdf), [ESP32 Datasheet](https://documentation.espressif.com/esp32_datasheet_en.pdf), [ESP32 Technical Datasheet](https://documentation.espressif.com/esp32_technical_reference_manual_en.pdf), [ESP32 Pinout](https://myhomethings.eu/en/esp32-pinout-which-pin-is-for-what/)
+ESP32 (Microcontroller): [WROOM-32 Datasheet](https://documentation.espressif.com/esp32-wroom-32_datasheet_en.pdf), [ESP32 Datasheet](https://documentation.espressif.com/esp32_datasheet_en.pdf), [ESP32 Technical Datasheet](https://documentation.espressif.com/esp32_technical_reference_manual_en.pdf), [ESP32 Pinout](https://myhomethings.eu/en/esp32-pinout-which-pin-is-for-what/)
 
 Pmod I2S2 (DAC/ADC): [Pmod I2S2 Website](https://digilent.com/shop/pmod-i2s2-stereo-audio-input-and-output/?srsltid=AfmBOooTMOfltlEenbGjUNlqvgo0MDkxhJpaJEM0rwyzwNJoJmLi9a2T), [Reference Manual](https://digilent.com/reference/pmod/pmodi2s2/reference-manual?redirect=1), [Schematic](https://digilent.com/reference/_media/reference/pmod/pmodi2s2/pmodi2s2_sch.pdf), [A/D](https://www.cirrus.com/products/cs5343-44), [D/A](https://www.cirrus.com/products/cs4344-45-48)
 
-SBL-1+ (mixer): [SBL-1+ Datasheet](https://www.minicircuits.com/pdfs/SBL-1+.pdf)
+SBL-1+ (Mixer): [SBL-1+ Datasheet](https://www.minicircuits.com/pdfs/SBL-1+.pdf)
 
 ADF4360-9 (PLL VCO): [ADF4360-9 Eval Board](https://www.analog.com/media/en/technical-documentation/user-guides/ug-106.pdf), [ADF4360-9](https://www.analog.com/media/en/technical-documentation/data-sheets/ADF4360-9.pdf)
 
