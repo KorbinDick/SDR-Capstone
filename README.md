@@ -241,27 +241,27 @@ Libraries: [Codec2](https://github.com/sh123/esp32_codec2_arduino/tree/master), 
 
 ESP32 (microcontroller): [WROOM-32 Datasheet](https://documentation.espressif.com/esp32-wroom-32_datasheet_en.pdf), [ESP32 Datasheet](https://documentation.espressif.com/esp32_datasheet_en.pdf), [ESP32 Technical Datasheet](https://documentation.espressif.com/esp32_technical_reference_manual_en.pdf), [ESP32 Pinout](https://myhomethings.eu/en/esp32-pinout-which-pin-is-for-what/)
 
-Pmod I2S2 (DAC/ADC): [Pmod I2S2 Website], [Reference Manual], [Schematic], [A/D], [D/A]
+Pmod I2S2 (DAC/ADC): [Pmod I2S2 Website](https://digilent.com/shop/pmod-i2s2-stereo-audio-input-and-output/?srsltid=AfmBOooTMOfltlEenbGjUNlqvgo0MDkxhJpaJEM0rwyzwNJoJmLi9a2T), [Reference Manual](https://digilent.com/reference/pmod/pmodi2s2/reference-manual?redirect=1), [Schematic](https://digilent.com/reference/_media/reference/pmod/pmodi2s2/pmodi2s2_sch.pdf), [A/D](https://www.cirrus.com/products/cs5343-44), [D/A](https://www.cirrus.com/products/cs4344-45-48)
 
-SBL-1+ (mixer): [SBL-1+ Datasheet]
+SBL-1+ (mixer): [SBL-1+ Datasheet](https://www.minicircuits.com/pdfs/SBL-1+.pdf)
 
-ADF4360-9 (PLL VCO): [ADF4360-9 Eval Board], [ADF4360-9]
+ADF4360-9 (PLL VCO): [ADF4360-9 Eval Board](https://www.analog.com/media/en/technical-documentation/user-guides/ug-106.pdf), [ADF4360-9](https://www.analog.com/media/en/technical-documentation/data-sheets/ADF4360-9.pdf)
 
-OPA347/LM386 (baseband operational amplifiers): [OPA347], [LM386]
+OPA347/LM386 (baseband operational amplifiers): [OPA347](https://www.ti.com/lit/ds/symlink/opa347.pdf?ts=1767456436820&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FOPA347), [LM386](https://www.circuits-diy.com/acoustic-audio-amplifier-circuit-using-lm386/)
 
-Codec2 (speech encoder/decoder): [Codec2]
+Codec2 (speech encoder/decoder): [Codec2](https://www.rowetel.com/wordpress/?page_id=452)
 
-Direct Digital Synthesis and Numerically Controlled Oscillators (DDS/NCO): [ADI], [Digikey], [DAC Performance], [ADI Forum]
+Direct Digital Synthesis and Numerically Controlled Oscillators (DDS/NCO): [ADI](https://www.analog.com/media/en/training-seminars/tutorials/mt-085.pdf), [Digikey](https://www.digikey.com/en/articles/the-basics-of-direct-digital-synthesizers-ddss), [DAC Performance](https://www.analog.com/media/en/training-seminars/design-handbooks/Technical-Tutorial-DDS/Section4.pdf), [ADI Forum](https://www.analog.com/en/resources/analog-dialogue/articles/all-about-direct-digital-synthesis.html)
 
-FreeRTOS: [Espressif FreeRTOS], [FreeRTOS Examples]
+FreeRTOS: [Espressif FreeRTOS](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/freertos.html), [FreeRTOS Examples](https://randomnerdtutorials.com/esp32-freertos-queues-inter-task-arduino/)
 
-I2S: [I2S]
+I2S: [I2S](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/i2s.html)
 
-Data Formatting: [Clamping], [Normalization], [DataTypes], [Q31]
+Data Formatting: [Clamping](https://stackoverflow.com/questions/66538439/best-practice-for-in-place-clamping-clipping-a-number), [Normalization](https://people.revoledu.com/kardi/tutorial/Similarity/Normalization.html), [DataTypes](https://en.cppreference.com/w/cpp/types/integer.html), [Q31](https://onlinedocs.microchip.com/oxy/GUID-70ACD6B0-A33F-4653-B192-8465EAD1FD98-en-US-11/GUID-889092D2-E1E4-4491-ABDB-47CEEBA41E1D.html)
 
-Decimation/Interpolation: [Decimation/Interpolation], [Linear Interpolation]
+Decimation/Interpolation: [Decimation/Interpolation](https://web.ece.ucsb.edu/Faculty/Rabiner/ece259/Reprints/087_optimum%20fir%20digital%20filters.pdf), [Linear Interpolation](https://michaelkrzyzaniak.com/AudioSynthesis/2_Audio_Synthesis/8_Interpolation/1_Linear_Interpolation/)
 
-SSB: [Trig Identities], [GNU Radio], [Intro to SSB], [Mini-Circuits IQ Mixers], [Phasing Method]
+SSB: [Trigonometric Identities](https://www.dsprelated.com/freebooks/filters/Complex_Trigonometric_Identities.html), [GNU Radio](https://www.site2241.net/august2025.htm), [Intro to SSB](https://www.eeworldonline.com/introduction-iq-signal/), [Mini-Circuits IQ Mixers](https://blog.minicircuits.com/iq-mixers-image-reject-down-conversion-single-sideband-ssb-up-conversion/), [Phasing Method](https://www.allaboutcircuits.com/technical-articles/the-phasing-method-and-hilbert-transforms-for-single-sideband-modulation/)
 
-FSK Demod: [FSK Demod PDF], [FSK Demod Source], [Goertzel Algorithm]
+FSK Demod: [FSK Demod PDF](https://inatel.br/docentes/documents/dayan/Publications/77.pdf), [FSK Demod Source](https://mistic-lab.github.io/ece-communications-labs/ece450/lab3/theory), [Goertzel Algorithm](https://wirelesspi.com/goertzel-algorithm-evaluating-dft-without-dft/)
 
