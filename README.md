@@ -257,7 +257,7 @@ FreeRTOS: [Espressif FreeRTOS](https://docs.espressif.com/projects/esp-idf/en/st
 
 I2S: [I2S](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/i2s.html)
 
-Data Formatting: [Clamping](https://stackoverflow.com/questions/66538439/best-practice-for-in-place-clamping-clipping-a-number), [Normalization](https://people.revoledu.com/kardi/tutorial/Similarity/Normalization.html), [DataTypes](https://en.cppreference.com/w/cpp/types/integer.html), [Q31](https://onlinedocs.microchip.com/oxy/GUID-70ACD6B0-A33F-4653-B192-8465EAD1FD98-en-US-11/GUID-889092D2-E1E4-4491-ABDB-47CEEBA41E1D.html)
+Data Formatting: [Clamping](https://stackoverflow.com/questions/66538439/best-practice-for-in-place-clamping-clipping-a-number), [Normalization](https://people.revoledu.com/kardi/tutorial/Similarity/Normalization.html), [DataTypes](https://en.cppreference.com/w/cpp/types/integer.html), [Q31](https://onlinedocs.microchip.com/oxy/GUID-70ACD6B0-A33F-4653-B192-8465EAD1FD98-en-US-11/GUID-889092D2-E1E4-4491-ABDB-47CEEBA41E1D.html), [FIR Application](https://www.wasyresearch.com/tutorial-c-c-implementation-of-circular-buffer-for-fir-filter-and-gnu-plotting-on-linux/#:~:text=Wahyudin%20Syam%20In%20this%20post,%20a%20tutorial,plot%20application%20in%20Linux%20will%20be%20shown)
 
 Decimation/Interpolation: [Decimation/Interpolation](https://web.ece.ucsb.edu/Faculty/Rabiner/ece259/Reprints/087_optimum%20fir%20digital%20filters.pdf), [Linear Interpolation](https://michaelkrzyzaniak.com/AudioSynthesis/2_Audio_Synthesis/8_Interpolation/1_Linear_Interpolation/)
 
