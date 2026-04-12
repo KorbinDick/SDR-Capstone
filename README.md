@@ -235,8 +235,33 @@ https://blog.minicircuits.com/iq-mixers-image-reject-down-conversion-single-side
 
 
 -----------------------------------------------------------------------
-### Included Libraries
-https://github.com/sh123/esp32_codec2_arduino/tree/master
+### Essential Documents/Sources:
 
-https://github.com/pschatzmann/arduino-audio-tools
+Libraries: [Codec2](https://github.com/sh123/esp32_codec2_arduino/tree/master), [Audio Tools](https://github.com/pschatzmann/arduino-audio-tools)
+
+ESP32 (microcontroller): [WROOM-32 Datasheet](https://documentation.espressif.com/esp32-wroom-32_datasheet_en.pdf), [ESP32 Datasheet](https://documentation.espressif.com/esp32_datasheet_en.pdf), [ESP32 Technical Datasheet](https://documentation.espressif.com/esp32_technical_reference_manual_en.pdf), [ESP32 Pinout](https://myhomethings.eu/en/esp32-pinout-which-pin-is-for-what/)
+
+Pmod I2S2 (DAC/ADC): [Pmod I2S2 Website], [Reference Manual], [Schematic], [A/D], [D/A]
+
+SBL-1+ (mixer): [SBL-1+ Datasheet]
+
+ADF4360-9 (PLL VCO): [ADF4360-9 Eval Board], [ADF4360-9]
+
+OPA347/LM386 (baseband operational amplifiers): [OPA347], [LM386]
+
+Codec2 (speech encoder/decoder): [Codec2]
+
+Direct Digital Synthesis and Numerically Controlled Oscillators (DDS/NCO): [ADI], [Digikey], [DAC Performance], [ADI Forum]
+
+FreeRTOS: [Espressif FreeRTOS], [FreeRTOS Examples]
+
+I2S: [I2S]
+
+Data Formatting: [Clamping], [Normalization], [DataTypes], [Q31]
+
+Decimation/Interpolation: [Decimation/Interpolation], [Linear Interpolation]
+
+SSB: [Trig Identities], [GNU Radio], [Intro to SSB], [Mini-Circuits IQ Mixers], [Phasing Method]
+
+FSK Demod: [FSK Demod PDF], [FSK Demod Source], [Goertzel Algorithm]
 
