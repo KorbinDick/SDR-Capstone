@@ -10,6 +10,7 @@
 
 //setting up ESP32-WROOM-32 pins
 #define LE 5
+#define LO_LOCK 36
 #define I2S_BCLK 26
 #define I2S_LRCLK 25
 #define I2S_MCLK 0
@@ -19,8 +20,16 @@
 //SPI configuration, hardcoded register values for the ADF4360
 //102.9MHz  output frequency at around +5dBm
 //N counter latch
-//uint32_t reg_n = 0xF8C0A; 
-uint32_t reg_n = 0x10140A; 
+
+//98.75MHz output (395/4) = below 400MHz spec
+//uint32_t reg_n = 0xF6E0A;
+
+//100MHz output (400/4) = exactly 400MHz spec
+uint32_t reg_n = 0xFA00A;
+
+//102.9MHz output (411.6/4) = above 400MHz spec
+//uint32_t reg_n = 0x10140A;
+
 //control latch
 uint32_t reg_control = 0x4FF1A4;
 //R counter latch
@@ -83,6 +92,8 @@ volatile int64_t debugMarkSum, debugSpaceSum, totalEnergy;
 volatile float normVal = 0;
 volatile int64_t debugtotalE = 0;
 
+volatile bool buttonPressed = false;
+
 //DDS phase accumulator, phase increment calculation
 //32 bit (2^32) phase wheel/accumulator
 //phase increment is determined based on the frequency wanted to synthesize and the sampling rate
@@ -131,6 +142,12 @@ void writeADF(uint32_t reg){
   delayMicroseconds(1);
 }
 
+//for LO_LOCK
+void IRAM_ATTR ISR(){
+    buttonPressed = true;
+}
+    
+
 void rxTask(void *pvParameters){
 
   //input buffer from ADC (Pmod I2S2), collects 64 samples (256 bytes) per buffer, the same as the transmitter
@@ -160,7 +177,9 @@ void rxTask(void *pvParameters){
   //amplitude only matters when trying to see if any signal is present, not for comparing, due to normalization
   //const uint64_t ENERGY_THRESHOLD = 1e6;
   //const uint64_t ENERGY_THRESHOLD = 1e9;
-  const uint64_t ENERGY_THRESHOLD = 5e7;
+  //const uint64_t ENERGY_THRESHOLD = 5e7;
+  const uint64_t ENERGY_THRESHOLD = 1000;
+
 
   //numebr of taps for digital BPF
   const int TAPS = BPF_TAPS;
@@ -276,7 +295,6 @@ void rxTask(void *pvParameters){
           int64_t diff = markEnergy - spaceEnergy;
 
           //comparing the mark and space frequency energies
-          //essentially (markEnergy - spaceEnergy) > (mark + space >>21)
           if(diff > (totalE >> 9)){
             bit = 1;
           }
@@ -430,9 +448,15 @@ void txTask(void *pvParameters){
     }
 }
 
+
 void setup(){
     //serial monitor start
     Serial.begin(115200);
+
+
+    pinMode(LO_LOCK, INPUT_PULLDOWN);
+    //might have to change to falling
+    attachInterrupt(LO_LOCK, ISR, RISING);
 
     //building sineLUT
     createSineTable();
@@ -460,28 +484,33 @@ void setup(){
     xTaskCreatePinnedToCore(txTask, "txTask", 8192, NULL, 4, NULL, 1);
 
 
+}
+
+void loop(){
+
+    if(buttonPressed){
+    detachInterrupt(LO_LOCK);
+    //Serial.printf("Button Pushed!\n");
     
-        //SPI configuration
-    //must be R, Control, then N latches set in order
-     //delay between Control and N might be 600microseconds, or 15ms
     pinMode(LE, OUTPUT);
     digitalWrite(LE, HIGH);
     SPI.begin();
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
     writeADF(reg_r);
     writeADF(reg_control);
-    delayMicroseconds(100);
-        //delayMicroseconds(15000);
+    //might have to change, right now its 16ms delay
+    delayMicroseconds(15000); 
     writeADF(reg_n);
     SPI.endTransaction();
+    
+    buttonPressed = false;
+    
+    }
 
 
-}
 
-void loop(){
 
-    //ALL JUST USED FOR DEBUG FOR NOW
-
+    /*
     vTaskDelay(pdMS_TO_TICKS(300));
 
     //Serial.printf("total energy = %lld\n", debugtotalE);
@@ -531,5 +560,7 @@ void loop(){
 
 
     }
+
+    */
 
 }
