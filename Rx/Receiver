@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <AudioTools.h>
-#include <si5351.h>
 #include <Wire.h>
 #include <codec2.h>
 #include <math.h>
