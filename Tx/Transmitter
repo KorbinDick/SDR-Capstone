@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <AudioTools.h>
-#include <si5351.h>
 #include <Wire.h>
 #include <codec2.h>
 #include <math.h>
@@ -14,7 +13,8 @@
    23, SCK (CLK) is GPIO18, and LE is GPIO5.*/
 
 #define LE 5
-#define BUTTON 13
+#define TX_BUTTON 13
+#define LO_LOCK 36
 #define I2S_BCLK 26
 #define I2S_LRCLK 25
 #define I2S_DIN 27
@@ -23,7 +23,16 @@
 
 //SPI configuration
 //N counter latch
-uint32_t reg_n = 0x10140A; 
+
+//98.75MHz output (395/4) = below 400MHz spec
+//uint32_t reg_n = 0xF6E0A;
+
+//100MHz output (400/4) = exactly 400MHz spec
+uint32_t reg_n = 0xFA00A;
+
+//102.9MHz output (411.6/4) = above 400MHz spec
+//uint32_t reg_n = 0x10140A;
+
 //control latch
 uint32_t reg_control = 0x4FF1A4; 
 //R counter latch
@@ -118,6 +127,9 @@ bool currentBit = 0;
 uint32_t samplesPerSymbol;
 uint32_t samplesLeftThisSymbol;
 
+
+volatile bool buttonPressed = false;
+
 //calculates phase increment for certain frequency (4.8kHz and 9.6kHz)
 uint32_t phaseIncrement(float freq){
     return (uint32_t)((freq * (1ULL << PHASE_BITS)) / IN_SR);
@@ -160,9 +172,12 @@ void writeADF(uint32_t reg){
   SPI.transfer((reg >> 16) & 0xFF);
   SPI.transfer((reg >> 8) & 0xFF);
   SPI.transfer((reg) & 0xFF);
-  delayMicroseconds(1); 
   digitalWrite(LE, HIGH); 
-  delayMicroseconds(1);
+}
+
+//for LO_LOCK
+void IRAM_ATTR ISR(){
+    buttonPressed = true;
 }
 
 void rxTask(void *pvParameters){
@@ -187,7 +202,7 @@ void rxTask(void *pvParameters){
     while(1){
 
             //if transmit button is not held high, the pcmQueue is filled with 0s/flushed of data
-            if(!digitalRead(BUTTON)){
+            if(!digitalRead(TX_BUTTON)){
                 int16_t dump1;
                     while (xQueueReceive(pcmQueue, &dump1, 0) == pdTRUE){}
                 vTaskDelay(pdMS_TO_TICKS(5));
@@ -302,7 +317,7 @@ void codec2Task(void *pvParameters){
     while(1){
 
             //same as rxTask, if there is no button pushed, flush the frameQueue
-            if(!digitalRead(BUTTON)){
+            if(!digitalRead(TX_BUTTON)){
 
                 uint8_t dump2[TX_FRAME_BYTES];
                     while(xQueueReceive(frameQueue, dump2, 0) == pdTRUE){}
@@ -473,10 +488,11 @@ void setup(){
 
     Serial.begin(115200);
 
-
-
     //button for transmitting
-    pinMode(BUTTON, INPUT_PULLDOWN);
+    //remember to replace the button on gpio13 dummy
+    pinMode(TX_BUTTON, INPUT_PULLDOWN);
+    pinMode(LO_LOCK, INPUT_PULLDOWN);
+    attachInterrupt(LO_LOCK, ISR, RISING);
 
     //creating the sineLUT
     createSineTable();
@@ -502,20 +518,7 @@ void setup(){
     xTaskCreatePinnedToCore(rxTask, "rxTask", 8192, NULL, 5, NULL, 0);
     xTaskCreatePinnedToCore(codec2Task, "codec2Task", 16384, NULL, 4, NULL, 1);
     xTaskCreatePinnedToCore(txTask, "txTask", 8192, NULL, 4, NULL, 0);
-
-     //SPI configuration
-     //must be R, Control, then N latches set in order
-     //delay between Control and N might be 600microseconds, or 15ms
-    pinMode(LE, OUTPUT);
-    digitalWrite(LE, HIGH);
-    SPI.begin();
-    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
-    writeADF(reg_r);
-    writeADF(reg_control);
-    delayMicroseconds(500); 
-    writeADF(reg_n);
-    SPI.endTransaction();
-
+    
 
 }
 
@@ -526,6 +529,8 @@ void loop(){
     //vTaskDelay(pdMS_TO_TICKS(100));
     //Serial.printf("FIR=%d nextBit=%d frameQ=%u\n", lastFirOut, lastNextBit, (unsigned)uxQueueMessagesWaiting(frameQueue));
     //Serial.printf("Frames=%u pushFail=%u pcmDrops=%u idling=%d\n", encodedFrames, fifoPushFailCount, pcmQueueDrops, isIdle);
+
+    /*
 
     uint8_t dbg[6];
 
@@ -543,12 +548,28 @@ void loop(){
     Serial.println();
     }
 
+*/
     
-    if(digitalRead(BUTTON)){
-      //Serial.printf("Button Pushed!\n");
+    if(buttonPressed){
+    detachInterrupt(LO_LOCK);
+    //Serial.printf("Button Pushed!\n");
+    
+    //SPI configuration
+    //must be R, Control, then N latches set in order
+    //delay between Control and N might be 600microseconds, or 15ms
+    pinMode(LE, OUTPUT);
+    digitalWrite(LE, HIGH);
+    SPI.begin();
+    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+    writeADF(reg_r);
+    writeADF(reg_control);
+    delayMicroseconds(15000); 
+    writeADF(reg_n);
+    SPI.endTransaction();
+    
+    buttonPressed = false;
+    
     }
-    //Serial.printf("SYMBOL_RATE=%u samplesPerSymbol=%u TX_FRAME_BITS=%u TX_FRAME_BYTES=%u\n", SYMBOL_RATE, samplesPerSymbol, (unsigned)TX_FRAME_BITS, (unsigned)TX_FRAME_BYTES);
-    //Serial.printf("tx_ms=%.2f\n", (float)TX_FRAME_BITS / (float)SYMBOL_RATE * 1000.0f);
 
 }
 
