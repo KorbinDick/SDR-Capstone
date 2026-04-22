@@ -249,6 +249,10 @@ ADF4360-9 (PLL VCO): [ADF4360-9 Eval Board](https://www.analog.com/media/en/tech
 
 OPA347/LM386 (baseband operational amplifiers): [OPA347](https://www.ti.com/lit/ds/symlink/opa347.pdf?ts=1767456436820&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FOPA347), [LM386](https://www.circuits-diy.com/acoustic-audio-amplifier-circuit-using-lm386/)
 
+Combiner: [MSC-2-1+](https://www.minicircuits.com/pdfs/MSC-2-1+.pdf)
+
+Hybrid Coupler: [ADQ-22+](https://www.minicircuits.com/pdfs/ADQ-22+.pdf?srsltid=AfmBOoqRbvO3JH32w2IXbKlj-hb6RPSnuCCA1FDw1THstv7bF7hkT2aK)
+
 Codec2 (speech encoder/decoder): [Codec2](https://www.rowetel.com/wordpress/?page_id=452)
 
 Direct Digital Synthesis and Numerically Controlled Oscillators (DDS/NCO): [ADI](https://www.analog.com/media/en/training-seminars/tutorials/mt-085.pdf), [Digikey](https://www.digikey.com/en/articles/the-basics-of-direct-digital-synthesizers-ddss), [DAC Performance](https://www.analog.com/media/en/training-seminars/design-handbooks/Technical-Tutorial-DDS/Section4.pdf), [ADI Forum](https://www.analog.com/en/resources/analog-dialogue/articles/all-about-direct-digital-synthesis.html)
